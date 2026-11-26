@@ -24,7 +24,8 @@ python -m femtools.verify      # måste sluta med "femtools verifierad OK"
 - Avsluta varje fall med förslag till revision av standarden. Ändringen görs som pull request i detta repo; Marcus godkänner genom att merga.
 
 ## Prestanda
-- Molnmiljön: 4 kärnor, 15 GB (uppmätt 2026-11-26). DOF-taket är inte uppmätt här: mät minnet för de två grövsta näten och extrapolera, stoppa och fråga över 70 % av RAM.
+- Molnmiljön: 4 kärnor, 15 GB (uppmätt 2026-11-26). Cirka 25 GB per miljon DOF, tak cirka 400 000 DOF för slanka detaljer, lägre för kompakta. Mät alltid minnet för de två grövsta näten och extrapolera, stoppa och fråga över 70 % av RAM.
+- Assembleringen tar ungefär dubbla lösningstiden: kör flera lastfall på samma matris.
 - Körningar över cirka 10 minuter i bakgrunden. Spara resultat till fil efter varje nät.
 
 ## Kontext och tokens
