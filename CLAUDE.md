@@ -12,6 +12,7 @@ Verifierade FEM-verktyg (gmsh + scikit-fem P2) och regler för alla FEM-beräkni
 ## Uppstart (varje ny container)
 ```bash
 apt-get update -qq && apt-get install -y -qq libglu1-mesa libxcursor1 libxinerama1 libxft2   # gmsh kräver libGLU
+apt-get install -y -qq openfoam                                                              # turbulent CFD (v1912), bara vid behov
 pip install -q -e .            # i repot; annars: pip install git+https://github.com/marcuslundh-gif/fem-tools
 python -m femtools.verify      # måste sluta med "femtools verifierad OK"
 ```
@@ -27,6 +28,11 @@ python -m femtools.verify      # måste sluta med "femtools verifierad OK"
 - Molnmiljön: 4 kärnor, 15 GB (uppmätt 2026-11-26). Cirka 25 GB per miljon DOF, tak cirka 400 000 DOF för slanka detaljer, lägre för kompakta. Mät alltid minnet för de två grövsta näten och extrapolera, stoppa och fråga över 70 % av RAM.
 - Assembleringen tar ungefär dubbla lösningstiden: kör flera lastfall på samma matris.
 - Körningar över cirka 10 minuter i bakgrunden. Spara resultat till fil efter varje nät.
+
+## CFD
+- Laminärt (Re under omslaget, rör cirka 2300): `femtools.flow` (scikit-fem). Turbulent: `femtools.openfoam` (OpenFOAM, SI-enheter).
+- Tunga turbulenta 3D-fall körs på smartfish (WSL2, OpenFOAM v2406, 16 trådar, 16 GB): fallet i `~/fem-cases/` i WSL, aldrig i Drive-synkad mapp eller på /mnt/c.
+- RANS-modellens fel (k-ω SST) är cirka ±3–5 % i friktion. Ange det i rapporten och använd säkerhetsmarginal därefter.
 
 ## Kontext och tokens
 - Skriv aldrig ut arrayer eller hela loggar: max 20 rader sammanfattning, resten till fil.

@@ -4,6 +4,8 @@ from .core import static, modal, richardson, von_mises
 from .loads import static_ext
 from .thermal import heat, heat_transient
 from .buckling import buckling
+from .cfd import flow, boundary_flow, reynolds
+from . import openfoam
 from .mesh import setup, refine_and_mesh, to_skfem, mesh_step
 from .materials import material, materials
 from . import projektblad, report

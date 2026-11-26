@@ -7,6 +7,9 @@ from .core import static, modal
 from .loads import static_ext
 from .thermal import heat, heat_transient
 from .buckling import buckling
+from .cfd import flow, boundary_flow
+from . import openfoam
+from .core import richardson
 from .mesh import setup, refine_and_mesh, to_skfem
 from .materials import material, materials
 from . import projektblad, report
@@ -188,6 +191,66 @@ def buckling_test():
     assert abs(f[2] / f[0] / 9 - 1) < 0.02 and abs(r3["factors"][0] / P3 - 1) < 0.01
 
 
+def cfd_test():
+    """flow: Kovasznay (exakt Navier-Stokes, Re 40) och Hagen-Poiseuille (Stokes, Δp med Richardson)."""
+    t0 = time.perf_counter()
+    Re = 40.0
+    lam = Re / 2 - np.sqrt(Re**2 / 4 + 4 * np.pi**2)
+    ue = lambda x: np.array([1 - np.exp(lam * x[0]) * np.cos(2 * np.pi * x[1]),
+                             lam / (2 * np.pi) * np.exp(lam * x[0]) * np.sin(2 * np.pi * x[1]), 0 * x[0]])
+    pe = lambda x: (1 - np.exp(2 * lam * x[0])) / 2
+    m = MeshTet.init_tensor(np.linspace(-0.5, 1, 17), np.linspace(-0.5, 1.5, 22), np.linspace(0, 0.1, 2))
+    m = m.with_boundaries({"alla": lambda x: np.ones(x.shape[1], bool)})
+    r = flow(m, mu=1 / Re, rho=1.0, u_fix={"alla": ue}, p_ref=([1.0, 0.5, 0.0], float(pe(np.array([1.0])))))
+    ub, xq = r["ubasis"], r["ubasis"].mapping.F(r["ubasis"].X)
+    uq, pq, dx = ub.interpolate(r["u"]).value, r["pbasis"].interpolate(r["p"]).value, ub.dx
+    eu = np.sqrt((((uq - ue(xq))**2).sum(0) * dx).sum() / ((ue(xq)**2).sum(0) * dx).sum())
+    ep = np.sqrt((((pq - pe(xq))**2) * dx).sum() / ((pe(xq)**2) * dx).sum())
+    D, L, mu, U = 10.0, 30.0, 1.0e-9, 50.0                                   # vatten, mm-t-s-MPa
+    R = D / 2
+    prof = lambda x: np.array([0 * x[0], 0 * x[0], 2 * U * np.clip(1 - (x[0]**2 + x[1]**2) / R**2, 0, None)])
+    dps = []
+    for nc in (16, 24, 36):                                                  # element per varv, r = 1,5
+        setup()
+        gmsh.model.occ.addCylinder(0, 0, 0, 0, 0, L, R)
+        gmsh.model.occ.synchronize()
+        refine_and_mesh(2 * np.pi * R / nc, n_curv=nc)
+        mp = to_skfem()
+        gmsh.finalize()
+        mp = mp.with_boundaries({"in": lambda x: np.isclose(x[2], 0), "ut": lambda x: np.isclose(x[2], L),
+                                 "vagg": lambda x: ~(np.isclose(x[2], 0) | np.isclose(x[2], L))})
+        rp = flow(mp, mu, 0.0, u_fix={"in": prof, "vagg": [0, 0, 0]})
+        (Qi, pi), (Qo, po) = boundary_flow(mp, rp, "in"), boundary_flow(mp, rp, "ut")
+        dps.append(pi - po)
+    p_obs, dp_ext = richardson(*dps, 1.5)
+    dp_hand = 32 * mu * L * U / D**2
+    print(f"CFD laminärt: Kovasznay Re 40 L2-fel u {eu:.2%}, p {ep:.2%} ({r['iterations']} Picard, {r['DOF']} DOF); "
+          f"Poiseuille dp {dps[-1] * 1e6:.4f} Pa, Richardson {dp_ext * 1e6:.4f} (p {p_obs:.1f}) mot {dp_hand * 1e6:.4f} Pa, "
+          f"Q ut {Qo:.0f}/{np.pi * R**2 * U:.0f} mm3/s, {time.perf_counter() - t0:.1f} s")
+    assert eu < 0.002 and ep < 0.01 and abs(dp_ext / dp_hand - 1) < 0.005 and abs(dps[-1] / dp_hand - 1) < 0.02
+    assert abs(Qo / (np.pi * R**2 * U) - 1) < 0.002
+
+
+def openfoam_test():
+    """OpenFOAM k-ω SST: utvecklad turbulent rörströmning mot Colebrook (släta rör). Hoppas över utan OpenFOAM."""
+    ver = openfoam.available()
+    if not ver:
+        print("OpenFOAM: saknas i miljön, turbulent CFD är INTE verifierad här (apt-get install -y openfoam)")
+        return
+    import tempfile, os
+    t0 = time.perf_counter()
+    res = []
+    with tempfile.TemporaryDirectory() as td:
+        for Re, n, w in ((1e5, 160, 0.005), (1e6, 200, 0.0005)):
+            r = openfoam.turbulent_pipe(os.path.join(td, f"ror{int(Re)}"), Re=Re, n_r=n, wall_ratio=w, iters=6000)
+            res.append(r)
+    txt = ", ".join(f"Re {r['Re']:.0e}: f {r['f']:.5f} mot {r['f_colebrook']:.5f} ({r['f'] / r['f_colebrook'] - 1:+.1%}, "
+                    f"y+ {r['yplus']:.2f})" for r in res)
+    print(f"OpenFOAM {ver} k-omega SST rör: {txt}, {time.perf_counter() - t0:.0f} s")
+    for r in res:
+        assert abs(r["f"] / r["f_colebrook"] - 1) < 0.03 and r["yplus"] < 1
+
+
 def data():
     """materials.json komplett och tjockleksuppslag rätt; projektbladsmallen ska stoppas."""
     import json, pathlib
@@ -209,5 +272,7 @@ if __name__ == "__main__":
     loads_test()
     thermal_test()
     buckling_test()
+    cfd_test()
+    openfoam_test()
     data()
     print(f"femtools verifierad OK ({time.perf_counter() - t0:.1f} s)")
