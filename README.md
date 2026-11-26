@@ -1,6 +1,6 @@
 # femtools
 
-Verifierade FEM-verktyg: gmsh-meshning (HXT, lokal förfining, kvalitetskontroll), scikit-fem P2-statik och modalanalys med pypardiso, materialdata med källor och projektblad med stoppkontroll. Enheter mm, N, MPa, t, s.
+Verifierade FEM-verktyg: gmsh-meshning (HXT, lokal förfining, kvalitetskontroll), scikit-fem P2-statik (traktion, tryck, egenvikt, rotation, termisk last), modalanalys och värmeledning (stationär och transient) med pypardiso, materialdata med källor och projektblad med stoppkontroll. Enheter mm, N, MPa, t, s.
 
 Repot är master för reglerna: [`docs/projektstandard.md`](docs/projektstandard.md) och registret över verifierade verktyg [`docs/verifiering.md`](docs/verifiering.md). Agentinstruktioner: [`CLAUDE.md`](CLAUDE.md).
 
