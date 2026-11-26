@@ -8,8 +8,8 @@ Principer:
 - P1-nät från gmsh, P2-basis i skfem (raka kanter; förfina vid krökta kritiska ytor).
 
 Användning:
-  python mesh_template.py                 # verifieringsfall: plåt med hål, Kt mot Heywood
-  from mesh_template import mesh_step     # för STEP-filer
+  from femtools import mesh_step          # STEP-fil -> skfem-nät
+  python -m femtools.verify               # verifieringsfall: plåt med hål, Kt mot Heywood
 """
 import time
 import numpy as np

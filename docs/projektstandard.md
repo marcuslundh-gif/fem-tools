@@ -1,6 +1,8 @@
 # Projektstandard för FEM-beräkningar
 
-Version 3.2, 2026-11-19. Ägare: Marcus Lundh.
+Version 4.0, 2026-11-26. Ägare: Marcus Lundh.
+
+Master: denna fil i GitHub-repot `fem-tools` (`docs/projektstandard.md`). Kopia i Google Drive-mappen "Projektstandard för FEM-beräkningar" synkas efter varje godkänd ändring.
 
 ## Revisionslogg
 
@@ -11,10 +13,13 @@ Version 3.2, 2026-11-19. Ägare: Marcus Lundh.
 | 3.0 | 2026-11-19 | Rapportkrav skärpta: lastskiss med randvillkor först i rapporten, obligatoriska resultatbilder (deformation, spänning, snitt, konvergens) med förklarande bildtext. Detaljerade krav flyttade till skillen fem-rapport, standarden har kärnreglerna. |
 | 3.1 | 2026-11-19 | femtools.report 1.1.0 verifierad och införd i verktygsregistret (öppen punkt stängd). Ny erfarenhetspost om apt-get update. |
 | 3.2 | 2026-11-19 | Värmeutvidgning α införd för alla material. Nya material med typvärden (ej minimivärden): PA12 SLS (EOS PA 2200), PA12 GB SLS (EOS PA 3200 GF), PA12 MJF (HP 3D HR PA 12), Alumide. Värden kontrollerade mot EOS, HP, Materialise och 3D Systems. |
+| 4.0 | 2026-11-26 | Master flyttad till GitHub-repot fem-tools så att alla agenter (Claude Code i molnet, lokalt och på jobbet) kör samma regler. claude.ai-specifika delar borttagna (2 kärnor/7 GB, kör klart inom svaret, synk till claude.ai-projektet). Verktygsregistret flyttat till `docs/verifiering.md` och rättat mot koden. Materialdata maskinläsbar i `femtools/materials.json`. Projektblad med stoppkontroll (`femtools.projektblad`). Regel för ANTAGET förtydligad, resonansmarginal 20 % även i skillen, sekretessregel för publikt repo. Revision via pull request. |
 
 ## Användning
 
-Standarden gäller alla FEM- och hållfasthetsberäkningar i projektet "FEM Agent", lokalt i Claude Code och på claude.ai. Projektspecifika värden (säkerhetsfaktorer, lastfall, krav) står i projektbladet för varje beräkningsfall, inte här. Om projektbladet och standarden säger olika gäller projektbladet för just det projektet. Standarden revideras enligt avsnittet Revisionsprocess.
+Standarden gäller alla FEM- och hållfasthetsberäkningar som görs med femtools, oavsett miljö: Claude Code i molnet, lokalt och agenten på jobbet. Arbetsgången står i skillen fem-berakning, rapportkraven i skillen fem-rapport och den praktiska uppstarten i `CLAUDE.md`. Projektspecifika värden (säkerhetsfaktorer, lastfall, krav) står i projektbladet för varje beräkningsfall, inte här. Om projektbladet och standarden säger olika gäller projektbladet för just det projektet. Standarden revideras enligt avsnittet Revisionsprocess.
+
+Sekretess: repot är publikt. Här ligger bara regler, verktyg, generiska verifieringsfall och generiska lärdomar. Projektblad, laster, STEP-filer, resultat och rapporter från kund- eller jobbprojekt läggs aldrig i repot, utan i projektets mapp på Drive (Kunddata/ när det är kunddata) eller i Claude.
 
 ## Enhetssystem
 
@@ -22,7 +27,12 @@ All beräkning och redovisning sker i mm, N, MPa, ton, s. Densitet anges i ton/m
 
 ## Projektblad (per projekt)
 
-Varje beräkningsfall har ett projektblad, `inputs/<case>.json`, som fylls i innan modellering. Saknas ett värde ska agenten fråga. Inga standardvärden antas för säkerhetsfaktorer eller laster.
+Varje beräkningsfall har ett projektblad, `inputs.json` i fallmappen (utanför repot, se Rapport och spårbarhet), som fylls i innan modellering. Mall: `mallar/projektblad.json`. Skripten läser projektbladet med `femtools.projektblad.load()`, som stoppar om säkerhetsfaktorer, lastfall eller material saknas. Saknas ett värde ska agenten fråga.
+
+Vad som får antas:
+
+- Aldrig: laster, lastfall, säkerhetsfaktorer, material, upplag. Fråga.
+- Får antas konservativt och märkas [ANTAGET]: geometridetaljer utanför utvärderingsområdet (radier, fasningar), friktionstal, imperfektioner, ytfinhet för utmattning. Antagandet listas i rapporten med påverkan på resultatet.
 
 | Parameter | Exempel | Kommentar |
 | :--- | :--- | :--- |
@@ -41,7 +51,9 @@ Varje beräkningsfall har ett projektblad, `inputs/<case>.json`, som fylls i inn
 
 ### Minimivärden (metaller)
 
-Värden är minimivärden enligt angiven standard. Använd materialcertifikat när det finns. Nytt material läggs till med källa.
+Maskinläsbar master för alla materialvärden: `femtools/materials.json` (läses med `femtools.material(namn, t)`). Tabellerna nedan är en läsbar sammanställning. Ändras ett värde ändras båda i samma pull request; `python -m femtools.verify` kontrollerar att JSON-filen är komplett.
+
+Värden är minimivärden enligt angiven standard. Använd materialcertifikat när det finns. Nytt material läggs till med källa, kontrollerat mot tillverkarens datablad och minst en annan tillverkare.
 
 | Material | Standard och produkt | Tjocklek t [mm] | E [MPa] | ν [-] | Rp0,2 / ReH [MPa] | Rm [MPa] | ρ [ton/mm³] | α [1/K] |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -82,7 +94,7 @@ Kontroll mot andra tillverkare (2026-11-19): Materialise PA12 SLS 1 650 MPa / 48
 
 ## Meshning
 
-Standardinställningar i gmsh (finns i `mesh_template.py`):
+Standardinställningar i gmsh (finns i `femtools/mesh.py`, funktionerna `setup` och `refine_and_mesh`):
 
 | Inställning | Värde | Syfte |
 | :--- | :--- | :--- |
@@ -123,7 +135,8 @@ Effektivitet:
 - Mycket stora modeller: konjugerade gradienter med algebraisk multigrid (pyamg) som förkonditionerare.
 - Logga DOF, meshtid, lösningstid, minnestopp och antal trådar för varje körning.
 - Mät minnet för de två grövsta näten och extrapolera innan det finaste körs. Stoppa och fråga om uppskattningen överstiger 70 % av tillgängligt RAM.
-- Praktiskt tak i claude.ai-containern (2 kärnor, 7 GB uppmätt 2026-11-17): cirka 300 000 DOF. Större modeller körs lokalt.
+- Långa körningar (över cirka 10 minuter) körs i bakgrunden med resultat sparat till fil efter varje nät, så att en avbruten studie kan återupptas.
+- Miljöer (uppmätt): Claude Code-molnet 4 kärnor, 15 GB (2026-11-26). DOF-taket är inte uppmätt i denna miljö: mät minne för två grova nät och extrapolera enligt regeln ovan. Den tidigare claude.ai-containern (2 kärnor, 7 GB) klarade cirka 300 000 DOF.
 
 ## Verifiering
 
@@ -146,30 +159,24 @@ Obligatoriskt för varje beräkningsfall:
 
 - Utmattning, grundmaterial: Kf = 1 + q(Kt − 1). Goodman eller Gerber med korrigerad utmattningsgräns (yta, storlek, tillförlitlighet). Säkerhetsfaktor mot utmattning redovisas separat från statisk.
 - Utmattning, svetsar: nominell spänning eller hot-spot-spänningsvidd mot FAT-klass enligt EN 1993-1-9, EN 1999-1-3 eller IIW. Variabel amplitud med Palmgren-Miner. Ange FAT-klass och källa.
-- Egenfrekvens: modalanalys med verkliga randvillkor och tillsatta massor. Marginal mot drivfrekvenser och deras övertoner anges i projektbladet. Riktvärde om inget anges: minst 20 %.
+- Egenfrekvens: modalanalys med verkliga randvillkor och tillsatta massor. Marginal mot drivfrekvenser och deras övertoner anges i projektbladet. Riktvärde om inget anges: minst 20 % (gäller även skillen fem-berakning).
 - Knäckning: linjär buckling-analys ger lastfaktor. Tunnväggiga eller imperfektionskänsliga konstruktioner kräver icke-linjär analys eller standardens reduktionskurvor.
 
 ## Rapport och spårbarhet
 
 Detaljerade krav och mall finns i skillen fem-rapport. Kärnreglerna:
 
-- Rapport i `results/<YYMMDD_case>/report.md`, figurer i `fig/`. PDF (stående A4) när rapporten ska delas. Skisser och diagram som SVG, fältplottar som PNG.
+- Fallmapp: `<projektmapp på Drive>/FEM/<YYMMDD_case>/` med `inputs.json` (projektblad), `src/` (skript, handräkning), `results/` (nät, resultatfiler), `fig/` och `report.md`. Arbetskopia i molnet läggs utanför repot (t.ex. `~/fem-cases/<YYMMDD_case>/`); `cases/` och `results/` är spärrade i `.gitignore`.
+- Rapport som PDF (stående A4), filnamn `YYMMDD <namn>.pdf`, när rapporten ska delas. Skisser och diagram som SVG, fältplottar som PNG.
 - Lastskiss först (fig. 1): ritad från analyserad geometri med alla laster (storlek, riktning, angreppsyta, lastfall), alla upplag med låsta DOF, symmetriplan, koordinatsystem, mått och reaktionskrafter. Antaganden märks [ANTAGET]. BC-tabell under skissen.
 - Resultatbilder: deformation (hel modell, förstoringsfaktor angiven), von Mises (skala 0 till Rp0,2, max markerat), detaljvy med nät kring kritisk punkt, minst två snitt (snittplan markerade i översiktsbilden, samma färgskala), konvergensplott. Modform eller bucklingform när relevant.
 - Varje resultatbild har bildtext med siffror: vad som visas, var och hur stort (utnyttjandegrad mot gräns), varför, tillförlitlighet (konvergerat, singularitet) och konsekvens.
 - Skilj VERIFIERAT från ANTAGET.
-- Ange version av denna standard, skriptversion (commit-hash när repo finns) och projektbladets innehåll i rapportens början.
+- Ange version av denna standard, femtools-version och commit-hash (`femtools.__version__`, `git rev-parse --short HEAD`) och projektbladets innehåll i rapportens början.
 
 ## Verktygsregister
 
-Verktyg läggs till här först när de är verifierade mot handräkning. Ange version, verifieringsfall och resultat.
-
-| Verktyg | Version | Verifieringsfall | Resultat |
-| :--- | :--- | :--- | :--- |
-| fem_template.py (scikit-fem 12.0.2, P2, pypardiso) | 1.0, 2026-11-17 | Konsol 100×10×10 mm, 100 N | Nedböjning 0,1904 mm mot 0,1905 mm (balkteori). σ vid L/2 30,3 mot 30,0 MPa. Jämvikt exakt. |
-| modalanalys i fem-berakning-skillen | 1.0, 2026-11-17 | Samma konsol, stål | f1 834 Hz mot 836 Hz (Euler-Bernoulli). |
-| mesh_template.py (gmsh 4.15.2, HXT, lokal förfining) | 1.0, 2026-11-17 | Plåt 100×40×5 mm med hål Ø10, 10 MPa drag | σ_max 33,1–33,3 MPa på tre nät (ändring 0,6 %) mot 32,3 MPa (Heywood). Skillnaden 3 % tillskrivs 3D-effekt genom tjockleken. Meshtid under 0,2 s. |
-| femtools.report (matplotlib 3.11) | 1.1.0, 2026-11-19 | Samma konsol, snitt vid x = L/2, nät 48×6×6 | Nedböjning 0,1910 mot 0,1905 mm. σ i snitt 30,0 mot 30,0 MPa (L2-projektion till P1). Fem figurer skapas, ingår i python -m femtools.verify. Ej testat: plåt med hål, STEP-geometri, nät över cirka 100 000 element (snittfunktionen loopar i Python). |
+Flyttat till `docs/verifiering.md` (v4.0) så att registret ligger bredvid koden och testerna i `femtools/verify.py`. Regeln gäller oförändrat: ett verktyg används i beräkningar först när det är verifierat mot handräkning och infört i registret.
 
 ## Erfarenhetsbank
 
@@ -184,10 +191,13 @@ Lärdomar från genomförda beräkningar. Varje post: datum, projekt, lärdom, �
 | 2026-11-19 | Allmänt | apt-get install libglu1-mesa misslyckas ("Unable to locate package") i en ny container tills apt-get update körts. | Kör apt-get update före apt-get install i beräkningsmiljön. |
 | 2026-11-19 | Allmänt | Nodvärden som medelvärde av elementvärden gav 26,9 MPa i snittet mot 30,0 MPa (balkteori), cirka 10 % för lågt vid ytan. | femtools.report använder L2-projektion till P1. Jämför alltid snittvärden mot handräkning. |
 | 2026-11-19 | Allmänt | SolidWorks-materialfiler (.sldmat) från tjänsteleverantörer avvek från tillverkarens datablad: PA 2200 E 2 000 mot 1 650 MPa, PA 3200 GF E 3 600 mot 3 200 MPa, Alumide α 1,2e-5 (fysikaliskt omöjligt, under aluminiums värde). | Materialdata hämtas från tillverkarens datablad och kontrolleras mot minst en annan tillverkare. .sldmat-filerna rättade. |
+| 2026-11-26 | Allmänt | gmsh kräver libGLU även i Claude Code-molnet (`OSError: libGLU.so.1`). | Uppstarten i `CLAUDE.md` kör `apt-get update` och `apt-get install` före `pip install`. |
+| 2026-11-26 | Allmänt | Registret angav femtools.report 1.1.0 som verifierat, men koden fanns inte i repot (bara 1.0.0). | Registret ligger nu i repot och verify.py måste täcka varje registrerat verktyg. |
 
 ## Revisionsprocess
 
 - Efter varje avslutat beräkningsfall föreslår agenten ändringar i standarden: nya lärdomar, nya verifierade verktyg, nya material. Förslaget redovisas som en lista i slutet av rapporten.
-- Marcus godkänner. Först därefter uppdateras dokumentet, versionsnumret höjs och revisionsloggen fylls i.
-- Mindre ändring (ny post i erfarenhetsbank eller verktygsregister) höjer andra siffran, t.ex. 2.0 till 2.1. Ändring av regler eller kriterier höjer första siffran.
-- Samma version ska finnas i Google Drive-mappen "Projektstandard för FEM-beräkningar" och som projektdokument i claude.ai-projektet "FEM Agent".
+- Ändringen görs som pull request i fem-tools. Marcus granskar och godkänner genom att merga. Versionsnumret höjs och revisionsloggen fylls i i samma pull request.
+- Mindre ändring (ny post i erfarenhetsbank, verktygsregister eller materialdata) höjer andra siffran, t.ex. 4.0 till 4.1. Ändring av regler eller kriterier höjer första siffran.
+- Lärdomar skrivs generiskt (typ av detalj och fenomen), aldrig med kundnamn, artikelnummer eller ritningsnummer.
+- Efter merge kopieras filen till Drive-mappen "Projektstandard för FEM-beräkningar". Föregående version flyttas till `_arkiv/` med version och datum i filnamnet.

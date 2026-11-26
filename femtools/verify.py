@@ -5,6 +5,8 @@ from skfem import MeshTet
 import gmsh
 from .core import static, modal
 from .mesh import setup, refine_and_mesh, to_skfem
+from .materials import material, materials
+from . import projektblad
 
 
 def cantilever():
@@ -52,8 +54,23 @@ def plate_hole():
     assert abs(sxx / hand - 1) < 0.06
 
 
+def data():
+    """materials.json komplett och tjockleksuppslag rätt; projektbladsmallen ska stoppas."""
+    import json, pathlib
+    for namn, rows in materials().items():
+        for r in rows:
+            assert {"nu", "rho", "alpha", "typ", "kalla"} <= set(r), namn
+    assert material("S355", t=20)["Rp02"] == 345 and material("6082-T6", t=4)["Rp02"] == 250
+    assert material("PA12 SLS (EOS PA 2200)")["Rm"] == 42                     # Z-riktning default
+    mall = pathlib.Path(__file__).resolve().parent.parent / "mallar" / "projektblad.json"
+    if mall.exists():                                                          # finns i repo, ej i pip-installation
+        assert len(projektblad.check(json.loads(mall.read_text(encoding="utf-8")))) >= 5
+    print(f"Data: {len(materials())} material OK, projektbladskontroll OK")
+
+
 if __name__ == "__main__":
     t0 = time.perf_counter()
     cantilever()
     plate_hole()
+    data()
     print(f"femtools verifierad OK ({time.perf_counter() - t0:.1f} s)")
