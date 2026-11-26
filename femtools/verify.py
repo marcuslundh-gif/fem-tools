@@ -6,7 +6,7 @@ import gmsh
 from .core import static, modal
 from .mesh import setup, refine_and_mesh, to_skfem
 from .materials import material, materials
-from . import projektblad
+from . import projektblad, report
 
 
 def cantilever():
@@ -17,12 +17,27 @@ def cantilever():
     uz = r["u"][r["basis"].get_dofs("load").all("u^3")].mean()
     I = B * H**3 / 12
     d_hand = F * L**3 / (3 * E * I)
+    n = report.nodal(r, E, nu)                                     # L2-projektion, snitt vid L/2
+    x, pts = report.line([L / 2, B / 2, 0], [L / 2, B / 2, H], 11)
+    s_sec = report.sample(m, n["sxx"], pts)
+    s_hand = -F * L / 2 * (pts[2] - H / 2) / I
+    e_sec = np.abs(s_sec - s_hand).max() / np.abs(s_hand).max()
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as td:                        # figurer skapas utan fel
+        report.plot_deformation(m, n, os.path.join(td, "d.png"), "test")
+        report.plot_field(m, n["vm"], os.path.join(td, "f.png"), "test", vmax=355)
+        report.plot_plane(m, n["sxx"], os.path.join(td, "p.png"), "test", [0, B / 2, 0], [0, 1, 0], res=60)
+        report.plot_line(x, {"FEM": s_sec}, os.path.join(td, "l.svg"), "test", ref={"hand": s_hand})
+        nfig = len(os.listdir(td))
     f1 = modal(m, E, nu, 7.85e-9, k=2)[0]
     f_hand = 1.8751**2 / (2 * np.pi) * np.sqrt(E * I / (7.85e-9 * B * H * L**4))
     eq = max(abs(a + b) for a, b in zip(r["R"], r["F"])) / abs(F)
     print(f"Konsol: delta {uz:.4f} mm (hand {d_hand:.4f}), f1 {f1:.0f} Hz (hand {f_hand:.0f}), "
           f"jämvikt {eq:.1e}, DOF {r['DOF']}, lösare {r['solver']}")
+    print(f"Snitt L/2 (report, L2-projektion): sigma_xx {s_sec[-1]:.2f} MPa (hand {s_hand[-1]:.2f}), "
+          f"max avvikelse {e_sec:.1%}, {nfig} figurer")
     assert abs(uz / d_hand - 1) < 0.01 and abs(f1 / f_hand - 1) < 0.01 and eq < 1e-3
+    assert e_sec < 0.03 and nfig == 4
 
 
 def plate_hole():
@@ -49,9 +64,11 @@ def plate_hole():
     r = static(m, 210e3, 0.3, [s_nom, 0, 0], D=D)
     sxx = r["sigma"][0, 0].max()
     hand = (2 + (1 - d / W)**3) * s_nom * W / (W - d)
-    print(f"Plåt med hål: sigma_xx,max {sxx:.1f} MPa (Heywood {hand:.1f}), gamma_min {q['gamma_min']:.2f}, "
-          f"mesh {t_mesh:.2f} s, DOF {r['DOF']}")
-    assert abs(sxx / hand - 1) < 0.06
+    n = report.nodal(r, 210e3, 0.3)
+    s_node = report.sample(m, n["sxx"], np.array([[L / 2], [W / 2 + d / 2], [T / 2]]))[0]
+    print(f"Plåt med hål: sigma_xx,max {sxx:.1f} MPa, i hålkant (L2-nod) {s_node:.1f} MPa (Heywood {hand:.1f}), "
+          f"gamma_min {q['gamma_min']:.2f}, mesh {t_mesh:.2f} s, DOF {r['DOF']}")
+    assert abs(sxx / hand - 1) < 0.06 and abs(s_node / hand - 1) < 0.06
 
 
 def data():

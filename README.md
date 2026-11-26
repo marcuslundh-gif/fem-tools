@@ -14,6 +14,6 @@ Verifiera:
 
 Användning:
 
-    from femtools import mesh_step, static, modal, richardson, material, projektblad
+    from femtools import mesh_step, static, modal, richardson, material, projektblad, report
     pb = projektblad.load("inputs.json")
     mat = material(pb["material"], t=pb["tjocklek_mm"])

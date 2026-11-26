@@ -19,6 +19,7 @@ python -m femtools.verify      # måste sluta med "femtools verifierad OK"
 ## Beräkningsfall
 - Fallmapp utanför repot: `~/fem-cases/<YYMMDD_case>/` med `inputs.json` (kopia av `mallar/projektblad.json`), `src/` (skript och `<case>_handcalc.py`), `results/`, `fig/`, `report.md`.
 - Leverans: PDF-rapport (stående A4, `YYMMDD <namn>.pdf`) och resultat till projektets mapp på Drive, `FEM/<YYMMDD_case>/`. Kunddata bara i projektets `Kunddata/`.
+- Figurer med `femtools.report` (L2-projektion, snitt, enhetlig stil). Fig. 1–7 i fem-rapport är minimum: lägg till de figurer som behövs för resultatet eller beslutet och motivera varje extra figur i bildtexten.
 - Rapportens början anger standardversion, `femtools.__version__`, commit-hash och projektbladet.
 - Avsluta varje fall med förslag till revision av standarden. Ändringen görs som pull request i detta repo; Marcus godkänner genom att merga.
 

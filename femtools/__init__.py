@@ -3,5 +3,5 @@ Regler: docs/projektstandard.md. Register över verifierade verktyg: docs/verifi
 from .core import static, modal, richardson, von_mises
 from .mesh import setup, refine_and_mesh, to_skfem, mesh_step
 from .materials import material, materials
-from . import projektblad
+from . import projektblad, report
 __version__ = "1.2.0"

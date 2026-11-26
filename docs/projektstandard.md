@@ -13,7 +13,7 @@ Master: denna fil i GitHub-repot `fem-tools` (`docs/projektstandard.md`). Kopia 
 | 3.0 | 2026-11-19 | Rapportkrav skärpta: lastskiss med randvillkor först i rapporten, obligatoriska resultatbilder (deformation, spänning, snitt, konvergens) med förklarande bildtext. Detaljerade krav flyttade till skillen fem-rapport, standarden har kärnreglerna. |
 | 3.1 | 2026-11-19 | femtools.report 1.1.0 verifierad och införd i verktygsregistret (öppen punkt stängd). Ny erfarenhetspost om apt-get update. |
 | 3.2 | 2026-11-19 | Värmeutvidgning α införd för alla material. Nya material med typvärden (ej minimivärden): PA12 SLS (EOS PA 2200), PA12 GB SLS (EOS PA 3200 GF), PA12 MJF (HP 3D HR PA 12), Alumide. Värden kontrollerade mot EOS, HP, Materialise och 3D Systems. |
-| 4.0 | 2026-11-26 | Master flyttad till GitHub-repot fem-tools så att alla agenter (Claude Code i molnet, lokalt och på jobbet) kör samma regler. claude.ai-specifika delar borttagna (2 kärnor/7 GB, kör klart inom svaret, synk till claude.ai-projektet). Verktygsregistret flyttat till `docs/verifiering.md` och rättat mot koden. Materialdata maskinläsbar i `femtools/materials.json`. Projektblad med stoppkontroll (`femtools.projektblad`). Regel för ANTAGET förtydligad, resonansmarginal 20 % även i skillen, sekretessregel för publikt repo. Revision via pull request. |
+| 4.0 | 2026-11-26 | Master flyttad till GitHub-repot fem-tools så att alla agenter (Claude Code i molnet, lokalt och på jobbet) kör samma regler. claude.ai-specifika delar borttagna (2 kärnor/7 GB, kör klart inom svaret, synk till claude.ai-projektet). Verktygsregistret flyttat till `docs/verifiering.md` och rättat mot koden. Materialdata maskinläsbar i `femtools/materials.json`. Projektblad med stoppkontroll (`femtools.projektblad`). Regel för ANTAGET förtydligad, resonansmarginal 20 % även i skillen, sekretessregel för publikt repo. Revision via pull request. femtools.report återskapad som verktygslåda; fig. 1–7 är minimum och agenten lägger till figurer efter behov. |
 
 ## Användning
 
@@ -181,6 +181,8 @@ Detaljerade krav och mall finns i skillen fem-rapport. Kärnreglerna:
 - Fallmapp: `<projektmapp på Drive>/FEM/<YYMMDD_case>/` med `inputs.json` (projektblad), `src/` (skript, handräkning), `results/` (nät, resultatfiler), `fig/` och `report.md`. Arbetskopia i molnet läggs utanför repot (t.ex. `~/fem-cases/<YYMMDD_case>/`); `cases/` och `results/` är spärrade i `.gitignore`.
 - Rapport som PDF (stående A4), filnamn `YYMMDD <namn>.pdf`, när rapporten ska delas. Skisser och diagram som SVG, fältplottar som PNG.
 - Lastskiss först (fig. 1): ritad från analyserad geometri med alla laster (storlek, riktning, angreppsyta, lastfall), alla upplag med låsta DOF, symmetriplan, koordinatsystem, mått och reaktionskrafter. Antaganden märks [ANTAGET]. BC-tabell under skissen.
+- Figurerna nedan och i skillen fem-rapport (fig. 1–7) är ett minimum, inte ett tak. Agenten lägger själv till de figurer som behövs för att förstå resultatet eller fatta beslutet, till exempel utnyttjandegrad, huvudspänningsriktningar (lastväg), kontakttryck, modformer, känslighetsstudie eller jämförelse före och efter en ändring. Varje extra figur har samma bildtext som övriga plus en mening om varför den behövs.
+- Figurerna byggs med byggstenarna i `femtools.report` (L2-projektion, snittuttag, enhetlig stil). Ny figurtyp som blir återkommande läggs in där med test.
 - Resultatbilder: deformation (hel modell, förstoringsfaktor angiven), von Mises (skala 0 till Rp0,2, max markerat), detaljvy med nät kring kritisk punkt, minst två snitt (snittplan markerade i översiktsbilden, samma färgskala), konvergensplott. Modform eller bucklingform när relevant.
 - Varje resultatbild har bildtext med siffror: vad som visas, var och hur stort (utnyttjandegrad mot gräns), varför, tillförlitlighet (konvergerat, singularitet) och konsekvens.
 - Skilj VERIFIERAT från ANTAGET.
@@ -207,6 +209,7 @@ Lärdomar från genomförda beräkningar. Varje post: datum, projekt, lärdom, �
 | 2026-11-26 | Allmänt | Registret angav femtools.report 1.1.0 som verifierat, men koden fanns inte i repot (bara 1.0.0). | Registret ligger nu i repot och verify.py måste täcka varje registrerat verktyg. |
 | 2026-11-26 | Allmänt | intorder 4 för P2-styvheten gjorde assembleringen 3,4 gånger långsammare än intorder 2 utan noggrannhetsvinst (10,3 mot 3,0 s vid 49 000 DOF). Modal med scipy shift-invert (en tråd) tog 26,7 s mot 6,5 s med pypardiso. | femtools 1.2.0: intorder 2 för K, pypardiso i modal. verify 14 s → 8 s, samma resultat. |
 | 2026-11-26 | Allmänt | gmsh HXT med flera trådar ger inte identiskt nät mellan körningar (plåt med hål: 33 651–33 852 DOF, σ_max 32,9–33,4 MPa). | Spara nätet (`.msh`) per nivå och återanvänd det. Krävs exakt reproducerbarhet: `setup(threads=1)`. |
+| 2026-11-26 | Allmänt | En fast rapportfunktion med ett givet antal figurer styr agenten mot just de figurerna. | femtools.report byggd som byggstenar; standardfigurerna är minimum och agenten väljer extra figurer med motivering. |
 
 ## Revisionsprocess
 
