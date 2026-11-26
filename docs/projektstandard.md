@@ -1,6 +1,6 @@
 # Projektstandard för FEM-beräkningar
 
-Version 4.0, 2026-11-26. Ägare: Marcus Lundh.
+Version 4.1, 2026-11-26. Ägare: Marcus Lundh.
 
 Master: denna fil i GitHub-repot `fem-tools` (`docs/projektstandard.md`). Kopia i Google Drive-mappen "Projektstandard för FEM-beräkningar" synkas efter varje godkänd ändring.
 
@@ -14,6 +14,7 @@ Master: denna fil i GitHub-repot `fem-tools` (`docs/projektstandard.md`). Kopia 
 | 3.1 | 2026-11-19 | femtools.report 1.1.0 verifierad och införd i verktygsregistret (öppen punkt stängd). Ny erfarenhetspost om apt-get update. |
 | 3.2 | 2026-11-19 | Värmeutvidgning α införd för alla material. Nya material med typvärden (ej minimivärden): PA12 SLS (EOS PA 2200), PA12 GB SLS (EOS PA 3200 GF), PA12 MJF (HP 3D HR PA 12), Alumide. Värden kontrollerade mot EOS, HP, Materialise och 3D Systems. |
 | 4.0 | 2026-11-26 | Master flyttad till GitHub-repot fem-tools så att alla agenter (Claude Code i molnet, lokalt och på jobbet) kör samma regler. claude.ai-specifika delar borttagna (2 kärnor/7 GB, kör klart inom svaret, synk till claude.ai-projektet). Verktygsregistret flyttat till `docs/verifiering.md` och rättat mot koden. Materialdata maskinläsbar i `femtools/materials.json`. Projektblad med stoppkontroll (`femtools.projektblad`). Regel för ANTAGET förtydligad, resonansmarginal 20 % även i skillen, sekretessregel för publikt repo. Revision via pull request. |
+| 4.1 | 2026-11-26 | Nya material: 1.4301 (rör, plattstång kapad och varmvalsad) och 42CrMo4+QT. Nya erfarenhetsposter: minnestak för kompakta solidmodeller, randfrihetsgrader vid summering av laster, solida rör i CAD, singulär topp i svetsrot och linjäriserad hot-spot. Regel: lastskiss och projektblad före beräkning gäller även handräkning och tippning. |
 
 ## Användning
 
@@ -28,6 +29,8 @@ All beräkning och redovisning sker i mm, N, MPa, ton, s. Densitet anges i ton/m
 ## Projektblad (per projekt)
 
 Varje beräkningsfall har ett projektblad, `inputs.json` i fallmappen (utanför repot, se Rapport och spårbarhet), som fylls i innan modellering. Mall: `mallar/projektblad.json`. Skripten läser projektbladet med `femtools.projektblad.load()`, som stoppar om säkerhetsfaktorer, lastfall eller material saknas. Saknas ett värde ska agenten fråga.
+
+Projektbladet gäller hela beräkningsfallet, även handräkningar, tippning och egenfrekvenser utanför FEM. Laster som bara används i en handräkning (till exempel personlast mot en bänk) får inte antas utan att stå i projektbladet.
 
 Vad som får antas:
 
@@ -63,6 +66,13 @@ Värden är minimivärden enligt angiven standard. Använd materialcertifikat n�
 | Alu 6082-T6 | EN 1999-1-1 tab 3.2b, strängpressat | t ≤ 5 | 70 000 | 0,33 | 250 | 290 | 2,70e-9 | 2,3e-5 |
 | Alu 6082-T6 | EN 1999-1-1 tab 3.2b, strängpressat | 5 < t ≤ 15 | 70 000 | 0,33 | 260 | 310 | 2,70e-9 | 2,3e-5 |
 | Alu 6082-T6, svetspåverkad zon (HAZ) | EN 1999-1-1 tab 3.2b, MIG, t ≤ 15 | t ≤ 15 | 70 000 | 0,33 | 125 | 185 | 2,70e-9 | 2,3e-5 |
+| Rostfritt 1.4301, rör | Tibnor Rostfria konstruktionsrör | t ≤ 8 | 200 000\* | 0,30\* | 210 | 520–720 | 7,9e-9\* | 1,6e-5\* |
+| Rostfritt 1.4301, plattstång kapad från plåt | Tibnor 1.4301/1.4307 | 3 ≤ t ≤ 12 | 200 000\* | 0,30\* | 210 | 520–720 | 7,9e-9\* | 1,6e-5\* |
+| Rostfritt 1.4301, plattstång varmvalsad | Tibnor 1.4301/1.4307 | 8 ≤ t ≤ 25 | 200 000\* | 0,30\* | 190 | 500–700 | 7,9e-9\* | 1,6e-5\* |
+| 42CrMo4+QT, rund (t = diameter) | Swiss Steel, EN ISO 683-2 | 16 < d ≤ 40 | 210 000\* | 0,30\* | 750 | 1 000–1 200 | 7,85e-9\* | 1,2e-5\* |
+| 42CrMo4+QT, rund (t = diameter) | Swiss Steel, EN ISO 683-2 | 40 < d ≤ 80 | 210 000\* | 0,30\* | 650 | 900–1 100 | 7,85e-9\* | 1,2e-5\* |
+
+\* ANTAGET: typvärden enligt EN 10088-1 respektive allmän stållitteratur, inte kontrollerade mot källa. Kontrollera innan de används i en termisk analys eller egenfrekvensberäkning med liten marginal. Härdat och anlöpt stål: dimensionerande diameter är ämnets, inte den färdiga detaljens (en axel med fläns Ø140 svarvas ur ett grövre ämne).
 
 α för stål enligt EN 1993-1-1 avsnitt 3.2.6, för aluminium enligt EN 1999-1-1 avsnitt 3.2.5.
 
@@ -207,6 +217,10 @@ Lärdomar från genomförda beräkningar. Varje post: datum, projekt, lärdom, �
 | 2026-11-26 | Allmänt | Registret angav femtools.report 1.1.0 som verifierat, men koden fanns inte i repot (bara 1.0.0). | Registret ligger nu i repot och verify.py måste täcka varje registrerat verktyg. |
 | 2026-11-26 | Allmänt | intorder 4 för P2-styvheten gjorde assembleringen 3,4 gånger långsammare än intorder 2 utan noggrannhetsvinst (10,3 mot 3,0 s vid 49 000 DOF). Modal med scipy shift-invert (en tråd) tog 26,7 s mot 6,5 s med pypardiso. | femtools 1.2.0: intorder 2 för K, pypardiso i modal. verify 14 s → 8 s, samma resultat. |
 | 2026-11-26 | Allmänt | gmsh HXT med flera trådar ger inte identiskt nät mellan körningar (plåt med hål: 33 651–33 852 DOF, σ_max 32,9–33,4 MPa). | Spara nätet (`.msh`) per nivå och återanvänd det. Krävs exakt reproducerbarhet: `setup(threads=1)`. |
+| 2026-11-26 | Allmänt | P2-solidmodell av svetsad rörram: 0,26 M DOF 3,5 GB, 0,50 M DOF 6,7 GB, 0,93 M DOF 11,8 GB (över 70 %-gränsen), 1,4 M DOF överskred 15 GB och containern startades om (alla bakgrundsjobb förlorades). Kompakt axel: 0,14 M DOF 2,5 GB, 0,25 M DOF 4,0 GB. | Minnet växer ungefär 13 GB per miljon DOF för solidmodeller, vilket ger ett tak kring 0,8 M DOF i molnet. Mät de två grövsta näten, extrapolera, och kör aldrig två stora jobb samtidigt. |
+| 2026-11-26 | Allmänt | `basis.get_dofs()` utan argument ger bara randens frihetsgrader. Summering av pålagd last med volymkraft blev 10 % fel i jämviktskontrollen. | Summera per komponent över `nodal_dofs[i]` och `edge_dofs[i]` (P2). |
+| 2026-11-26 | Allmänt | Rör ritade som solida stänger i CAD (förenklad modell) gav fel massa och styvhet. | Jämför STEP-volym per balk med katalogens kg/m före meshning. Ersätt med verkligt tvärsnitt. |
+| 2026-11-26 | Allmänt | Spänningen 4–12 mm från ett inre hörn vid svetsrot växte med förfiningen (111 → 137 MPa) fast den låg utanför hörnet. | Utvärdera svetsdetaljer med linjäriserad spänning per snitt (minsta kvadrat-anpassning a + b·y + c·z) och IIW hot-spot 0,4t/1,0t, inte max i en zon. |
 
 ## Revisionsprocess
 
