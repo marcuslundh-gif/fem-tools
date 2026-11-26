@@ -136,7 +136,19 @@ Effektivitet:
 - Logga DOF, meshtid, lösningstid, minnestopp och antal trådar för varje körning.
 - Mät minnet för de två grövsta näten och extrapolera innan det finaste körs. Stoppa och fråga om uppskattningen överstiger 70 % av tillgängligt RAM.
 - Långa körningar (över cirka 10 minuter) körs i bakgrunden med resultat sparat till fil efter varje nät, så att en avbruten studie kan återupptas.
-- Miljöer (uppmätt): Claude Code-molnet 4 kärnor, 15 GB (2026-11-26). DOF-taket är inte uppmätt i denna miljö: mät minne för två grova nät och extrapolera enligt regeln ovan. Den tidigare claude.ai-containern (2 kärnor, 7 GB) klarade cirka 300 000 DOF.
+- Styvhetsmatrisen integreras med intorder 2 (exakt för P2 på raka tetraedrar). Spänningar utvärderas med intorder 4. Egenfrekvenser löses med shift-invert där pypardiso faktoriserar.
+- Uppmätt 2026-11-26 i Claude Code-molnet (4 kärnor, 15 GB), P2-statik på slank balkgeometri:
+
+| DOF | Assemblering [s] | Lösning [s] | Minnestopp [GB] |
+| :--- | :--- | :--- | :--- |
+| 49 000 | 3,0 | 0,9 | 0,85 |
+| 112 000 | 7,2 | 3,0 | 2,2 |
+| 213 000 | 19,7 | 8,3 | 4,6 |
+| 362 000 | 38,5 | 18,2 | 8,9 |
+
+- Minnet växer ungefär 25 GB per miljon DOF. Med 70 %-regeln ger det ett tak kring 400 000 DOF i molnet. Kompakta detaljer ger mer fill-in än en slank balk och därmed lägre tak: mät alltid de två grövsta näten. Större modeller körs lokalt.
+- Assembleringen tar mer tid än lösningen. Kör därför flera lastfall på samma assemblerade matris i stället för att anropa `static` en gång per lastfall.
+- Den tidigare claude.ai-containern (2 kärnor, 7 GB) klarade cirka 300 000 DOF.
 
 ## Verifiering
 
@@ -193,6 +205,8 @@ Lärdomar från genomförda beräkningar. Varje post: datum, projekt, lärdom, �
 | 2026-11-19 | Allmänt | SolidWorks-materialfiler (.sldmat) från tjänsteleverantörer avvek från tillverkarens datablad: PA 2200 E 2 000 mot 1 650 MPa, PA 3200 GF E 3 600 mot 3 200 MPa, Alumide α 1,2e-5 (fysikaliskt omöjligt, under aluminiums värde). | Materialdata hämtas från tillverkarens datablad och kontrolleras mot minst en annan tillverkare. .sldmat-filerna rättade. |
 | 2026-11-26 | Allmänt | gmsh kräver libGLU även i Claude Code-molnet (`OSError: libGLU.so.1`). | Uppstarten i `CLAUDE.md` kör `apt-get update` och `apt-get install` före `pip install`. |
 | 2026-11-26 | Allmänt | Registret angav femtools.report 1.1.0 som verifierat, men koden fanns inte i repot (bara 1.0.0). | Registret ligger nu i repot och verify.py måste täcka varje registrerat verktyg. |
+| 2026-11-26 | Allmänt | intorder 4 för P2-styvheten gjorde assembleringen 3,4 gånger långsammare än intorder 2 utan noggrannhetsvinst (10,3 mot 3,0 s vid 49 000 DOF). Modal med scipy shift-invert (en tråd) tog 26,7 s mot 6,5 s med pypardiso. | femtools 1.2.0: intorder 2 för K, pypardiso i modal. verify 14 s → 8 s, samma resultat. |
+| 2026-11-26 | Allmänt | gmsh HXT med flera trådar ger inte identiskt nät mellan körningar (plåt med hål: 33 651–33 852 DOF, σ_max 32,9–33,4 MPa). | Spara nätet (`.msh`) per nivå och återanvänd det. Krävs exakt reproducerbarhet: `setup(threads=1)`. |
 
 ## Revisionsprocess
 
