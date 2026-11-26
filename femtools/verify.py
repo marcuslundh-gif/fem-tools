@@ -6,6 +6,7 @@ import gmsh
 from .core import static, modal
 from .loads import static_ext
 from .thermal import heat, heat_transient
+from .buckling import buckling
 from .mesh import setup, refine_and_mesh, to_skfem
 from .materials import material, materials
 from . import projektblad, report
@@ -170,6 +171,23 @@ def thermal_test():
     assert abs(Tc - Tc_h) < 0.2
 
 
+def buckling_test():
+    """buckling: Euler-pelare 500×10×10 mm, fall 1 (inspänd-fri) och fall 3 (inspänd-ledad)."""
+    E, nu, L, a = 210e3, 0.3, 500.0, 10.0
+    I = a**4 / 12
+    m = MeshTet.init_tensor(np.linspace(0, L, 51), np.linspace(0, a, 3), np.linspace(0, a, 3))
+    m = m.with_boundaries({"bas": lambda x: np.isclose(x[0], 0), "topp": lambda x: np.isclose(x[0], L)})
+    t0 = time.perf_counter()
+    r1 = buckling(m, E, nu, k=3, fix="bas", traction={"topp": [-1.0 / a**2, 0, 0]})        # 1 N tryck
+    r3 = buckling(m, E, nu, k=1, fix={"bas": "all", "topp": [1, 2]}, traction={"topp": [-1.0 / a**2, 0, 0]})
+    P1, P3 = np.pi**2 * E * I / (4 * L**2), 20.19 * E * I / L**2                          # 4,4934² = 20,19
+    f = r1["factors"]
+    print(f"Knäckning: fall 1 {f[0]:.0f} N (Euler {P1:.0f}), mod 3/mod 1 {f[2] / f[0]:.2f} (teori 9,00), "
+          f"fall 3 {r3['factors'][0]:.0f} N (Euler {P3:.0f}), {r1['DOF']} DOF, {time.perf_counter() - t0:.1f} s")
+    assert abs(f[0] / P1 - 1) < 0.005 and abs(f[0] / f[1] - 1) < 0.001               # två lika moder (kvadrat)
+    assert abs(f[2] / f[0] / 9 - 1) < 0.02 and abs(r3["factors"][0] / P3 - 1) < 0.01
+
+
 def data():
     """materials.json komplett och tjockleksuppslag rätt; projektbladsmallen ska stoppas."""
     import json, pathlib
@@ -190,5 +208,6 @@ if __name__ == "__main__":
     plate_hole()
     loads_test()
     thermal_test()
+    buckling_test()
     data()
     print(f"femtools verifierad OK ({time.perf_counter() - t0:.1f} s)")

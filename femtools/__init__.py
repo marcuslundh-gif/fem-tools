@@ -3,6 +3,7 @@ Regler: docs/projektstandard.md. Register över verifierade verktyg: docs/verifi
 from .core import static, modal, richardson, von_mises
 from .loads import static_ext
 from .thermal import heat, heat_transient
+from .buckling import buckling
 from .mesh import setup, refine_and_mesh, to_skfem, mesh_step
 from .materials import material, materials
 from . import projektblad, report
