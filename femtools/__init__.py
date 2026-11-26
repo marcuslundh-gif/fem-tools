@@ -8,5 +8,5 @@ from .cfd import flow, boundary_flow, reynolds
 from . import openfoam
 from .mesh import setup, refine_and_mesh, to_skfem, mesh_step
 from .materials import material, materials
-from . import projektblad, report
+from . import projektblad, report, webreport
 __version__ = "1.3.0"

@@ -12,7 +12,7 @@ from . import openfoam
 from .core import richardson
 from .mesh import setup, refine_and_mesh, to_skfem
 from .materials import material, materials
-from . import projektblad, report
+from . import projektblad, report, webreport
 
 
 def cantilever():
@@ -251,6 +251,28 @@ def openfoam_test():
         assert abs(r["f"] / r["f_colebrook"] - 1) < 0.03 and r["yplus"] < 1
 
 
+def webreport_test():
+    """webreport: ytan utåtorienterad, fält och tabeller hamnar i en fristående HTML-sida."""
+    import tempfile, os, json
+    m = MeshTet.init_tensor(np.linspace(0, 2, 5), np.linspace(0, 1, 3), np.linspace(0, 1, 4))
+    w = webreport.Report("Test", meta={"Fall": "verify"})
+    w.mesh(m)
+    p, t = w._surf["p"], w._surf["tri"]
+    nrm = np.cross(p[t[:, 1]] - p[t[:, 0]], p[t[:, 2]] - p[t[:, 0]])
+    out = (np.einsum("ij,ij->i", nrm, p[t].mean(1) - [1, 0.5, 0.5]) > 0).mean()
+    vals = m.p[0] * 10
+    w.field("LF1", "x", vals, "MPa", u=np.vstack([m.p[0] * 0.01, 0 * m.p[0], 0 * m.p[0]]), limit=15)
+    w.table("T", ["a", "b"], [["x", 1.5]])
+    w.text("Text", "Stycke 1\n\nStycke 2")
+    with tempfile.TemporaryDirectory() as td:
+        html = open(w.write(os.path.join(td, "r.html")), encoding="utf-8").read()
+    d = w.data()
+    f = d["cases"][0]["fields"][0]
+    print(f"Webbrapport: {len(t)} yttrianglar, {out:.0%} utåt, max {f['max']:.1f} vid {f['at']}, {len(html) // 1024} kB")
+    assert out == 1.0 and abs(f["max"] - 20) < 1e-9 and f["at"][0] == 2.0
+    assert "<title>Test</title>" in html and "three@0.128.0" in html and json.dumps(d["title"]) in html
+
+
 def data():
     """materials.json komplett och tjockleksuppslag rätt; projektbladsmallen ska stoppas."""
     import json, pathlib
@@ -274,5 +296,6 @@ if __name__ == "__main__":
     buckling_test()
     cfd_test()
     openfoam_test()
+    webreport_test()
     data()
     print(f"femtools verifierad OK ({time.perf_counter() - t0:.1f} s)")
