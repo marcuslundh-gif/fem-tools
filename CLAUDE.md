@@ -34,6 +34,9 @@ python -m femtools.verify      # måste sluta med "femtools verifierad OK"
 - Laminärt (Re under omslaget, rör cirka 2300): `femtools.flow` (scikit-fem). Turbulent: `femtools.openfoam` (OpenFOAM, SI-enheter).
 - Tunga turbulenta 3D-fall körs på smartfish (WSL2, OpenFOAM v2406, 16 trådar, 16 GB): fallet i `~/fem-cases/` i WSL, aldrig i Drive-synkad mapp eller på /mnt/c.
 - RANS-modellens fel (k-ω SST) är cirka ±3–5 % i friktion. Ange det i rapporten och använd säkerhetsmarginal därefter.
+- STEP → OpenFOAM-nät: gmsh-tetraeder av vätskekroppen med fysiska grupper (inlet, outlet, walls, fluid), `Mesh.MshFileVersion 2.2`, `gmshToFoam`, `transformPoints -scale '(0.001 0.001 0.001)'`, sätt sedan `walls` till `type wall` i `constant/polyMesh/boundary`. Inloppshastighet = Q / nätets inloppsarea.
+- OpenFOAM v1912 (apt): inga function objects (surfaceFieldValue kraschar), efterbehandla i Python ur polyMesh och tidskataloger (`writeFormat ascii`). Parallellt: `decomposePar` med `method hierarchical` (scotch saknas), `mpirun --allow-run-as-root -np 4 simpleFoam -parallel`, `reconstructPar`.
+- Tetraedernät med SIMPLE stannar ofta vid residualer 1e-3–1e-2: redovisa Δp som medel och min–max över andra halvan av iterationerna.
 
 ## Kontext och tokens
 - Skriv aldrig ut arrayer eller hela loggar: max 20 rader sammanfattning, resten till fil.
