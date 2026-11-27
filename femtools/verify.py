@@ -280,6 +280,7 @@ def data():
         for r in rows:
             assert {"nu", "rho", "alpha", "typ", "kalla"} <= set(r), namn
     assert material("S355", t=20)["Rp02"] == 345 and material("6082-T6", t=4)["Rp02"] == 250
+    assert material("1.4301 plattstång varmvalsad", t=10)["Rp02"] == 190 and material("42CrMo4+QT", t=60)["Rp02"] == 650
     assert material("PA12 SLS (EOS PA 2200)")["Rm"] == 42                     # Z-riktning default
     mall = pathlib.Path(__file__).resolve().parent.parent / "mallar" / "projektblad.json"
     if mall.exists():                                                          # finns i repo, ej i pip-installation

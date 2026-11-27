@@ -3,8 +3,18 @@
     "enheter": "E, Rp02, Rm [MPa]; rho [t/mm3]; alpha [1/K]; t_min/t_max [mm]",
     "master": "Denna fil är master för materialvärden. Tabellen i docs/projektstandard.md ändras i samma pull request.",
     "typ": "MINIMI = minimivärde enligt standard; TYPVARDE = leverantörens medelvärde; nyckel antaget lista fält som saknas i datablad (ANTAGET)",
-    "standardversion": "4.0"
+    "standardversion": "4.1"
   },
+  "1.4301 plattstång kapad": [
+    {"t_min": 3, "t_max": 12, "E": 200000, "nu": 0.30, "Rp02": 210, "Rm": [520, 720], "rho": 7.9e-9, "alpha": 1.6e-5, "typ": "MINIMI", "antaget": ["E", "nu", "rho", "alpha"], "kalla": "Tibnor Austenitiska rostfria stål 1.4301/1.4307: plattstång kapad från plåt 3-12 mm"}
+  ],
+  "1.4301 plattstång varmvalsad": [
+    {"t_min": 8, "t_max": 25, "E": 200000, "nu": 0.30, "Rp02": 190, "Rm": [500, 700], "rho": 7.9e-9, "alpha": 1.6e-5, "typ": "MINIMI", "antaget": ["E", "nu", "rho", "alpha"], "kalla": "Tibnor Austenitiska rostfria stål 1.4301/1.4307: plattstång varmvalsad 8-25 mm"}
+  ],
+  "42CrMo4+QT": [
+    {"t_min": 16, "t_max": 40, "E": 210000, "nu": 0.30, "Rp02": 750, "Rm": [1000, 1200], "rho": 7.85e-9, "alpha": 1.2e-5, "typ": "MINIMI", "antaget": ["E", "nu", "rho", "alpha"], "kalla": "Swiss Steel 42CrMo4 datablad (EN ISO 683-2), diameter d"},
+    {"t_min": 40, "t_max": 80, "E": 210000, "nu": 0.30, "Rp02": 650, "Rm": [900, 1100], "rho": 7.85e-9, "alpha": 1.2e-5, "typ": "MINIMI", "antaget": ["E", "nu", "rho", "alpha"], "kalla": "Swiss Steel 42CrMo4 datablad (EN ISO 683-2), diameter d"}
+  ],
   "S355": [
     {"t_min": 0,  "t_max": 16, "E": 210000, "nu": 0.30, "Rp02": 355, "Rm": [470, 630], "rho": 7.85e-9, "alpha": 1.2e-5, "typ": "MINIMI", "kalla": "EN 10025-2; alpha EN 1993-1-1 3.2.6"},
     {"t_min": 16, "t_max": 40, "E": 210000, "nu": 0.30, "Rp02": 345, "Rm": [470, 630], "rho": 7.85e-9, "alpha": 1.2e-5, "typ": "MINIMI", "kalla": "EN 10025-2; alpha EN 1993-1-1 3.2.6"},
