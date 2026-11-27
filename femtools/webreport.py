@@ -166,6 +166,15 @@ class Report:
         self._surf = dict(nodes=used, p=m.p[:, used].T, tri=remap[tri].T)
         return self
 
+    def surface(self, p, tri, quads=None):
+        """Skalyta (t.ex. mittytan från femtools.shell): p (N, 3) noder, tri (k, 3) trianglar (0-baserade).
+        Ritas dubbelsidigt. quads (m, 4) ges för att nätlinjerna ska visa fyrhörningarna i stället för trianglar.
+        Anropas en gång, före field(); nodala fält ges per nod i p."""
+        p = np.asarray(p, float); tri = np.asarray(tri, dtype=np.int64)
+        self._surf = dict(nodes=np.arange(len(p)), p=p, tri=tri, double=True,
+                          quads=None if quads is None else np.asarray(quads, dtype=np.int64))
+        return self
+
     def field(self, case, name, values, unit, u=None, limit=None, limit_label=None, digits=4):
         """Nodalt fält (värde per hörnnod i hela nätet) i lastfallet `case`. u: (3, N) förskjutning för
         deformerad form (samma fall delar u). limit: gränsvärde som markeras i färgskalan."""
@@ -224,7 +233,9 @@ class Report:
         s = self._surf
         return dict(title=self.title, subtitle=self.subtitle, meta=self.meta, front=self.front, up=self.up, flows=self.flows,
                     mesh=None if s is None else dict(p=np.round(s["p"], 4).ravel().tolist(),
-                                                     tri=s["tri"].ravel().astype(int).tolist()),
+                                                     tri=s["tri"].ravel().astype(int).tolist(),
+                                                     double=bool(s.get("double", False)),
+                                                     quads=None if s.get("quads") is None else s["quads"].ravel().astype(int).tolist()),
                     cases=list(self.cases.values()), blocks=self.blocks)
 
     def html(self):
@@ -421,9 +432,12 @@ else (function(){
   const geo=new THREE.BufferGeometry(); const pos=new Float32Array(P); const col=new Float32Array(N*3);
   geo.setAttribute("position",new THREE.BufferAttribute(pos,3)); geo.setAttribute("color",new THREE.BufferAttribute(col,3));
   geo.setIndex(new THREE.BufferAttribute(T,1)); geo.computeBoundingSphere();
-  const mat=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.FrontSide,clippingPlanes:CL,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1});
+  const mat=new THREE.MeshLambertMaterial({vertexColors:true,side:D.mesh.double?THREE.DoubleSide:THREE.FrontSide,clippingPlanes:CL,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1});
   const mesh=new THREE.Mesh(geo,mat); scene.add(mesh);
-  const wire=new THREE.LineSegments(new THREE.WireframeGeometry(geo),new THREE.LineBasicMaterial({transparent:true,opacity:0.35,clippingPlanes:CL}));
+  const wireGeo=()=>{ if(!D.mesh.quads) return new THREE.WireframeGeometry(geo);
+    const Q=D.mesh.quads, E=[]; for(let i=0;i<Q.length;i+=4) for(let k=0;k<4;k++) E.push(Q[i+k],Q[i+(k+1)%4]);
+    const g=new THREE.BufferGeometry(); g.setAttribute("position",geo.attributes.position); g.setIndex(E); return g; };
+  const wire=new THREE.LineSegments(wireGeo(),new THREE.LineBasicMaterial({transparent:true,opacity:0.35,clippingPlanes:CL}));
   wire.visible=false; scene.add(wire);
   const bs=geo.boundingSphere, R=bs.radius||1;
   const marker=new THREE.Mesh(new THREE.SphereGeometry(R*0.025,16,12),new THREE.MeshBasicMaterial({color:0x000000})); scene.add(marker);
@@ -497,7 +511,7 @@ else (function(){
     $("scalev").textContent = c.u ? (s>0? "× "+fmt(s,3)+(+ss.value===25?" (auto)":"") : "av") : "ingen förskjutning";
     for(let i=0;i<3*N;i++) pos[i]=P[i]+(c.u? s*c.u[i]:0);
     geo.attributes.position.needsUpdate=true; geo.computeVertexNormals();
-    wire.geometry.dispose(); wire.geometry=new THREE.WireframeGeometry(geo);
+    if(!D.mesh.quads){ wire.geometry.dispose(); wire.geometry=wireGeo(); }
     let im=0; for(let i=1;i<N;i++) if(f.values[i]>f.values[im]) im=i; marker.position.set(pos[3*im],pos[3*im+1],pos[3*im+2]);
     marker.visible=$("maxm").checked;
     legend(lo,hi,f.unit,f.limit,f.limit_label);

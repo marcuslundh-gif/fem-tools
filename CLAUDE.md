@@ -13,6 +13,7 @@ Verifierade FEM-verktyg (gmsh + scikit-fem P2) och regler för alla FEM-beräkni
 ```bash
 apt-get update -qq && apt-get install -y -qq libglu1-mesa libxcursor1 libxinerama1 libxft2   # gmsh kräver libGLU
 apt-get install -y -qq openfoam                                                              # turbulent CFD (v1912), bara vid behov
+apt-get install -y -qq calculix-ccx && bash tools/build_ccx_pardiso.sh                       # tunna skal (femtools.shell), bara vid behov
 pip install -q -e .            # i repot; annars: pip install git+https://github.com/marcuslundh-gif/fem-tools
 python -m femtools.verify      # måste sluta med "femtools verifierad OK"
 ```

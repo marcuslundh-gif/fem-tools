@@ -12,7 +12,7 @@ from . import openfoam
 from .core import richardson
 from .mesh import setup, refine_and_mesh, to_skfem
 from .materials import material, materials
-from . import projektblad, report, webreport
+from . import projektblad, report, webreport, shell
 
 
 def cantilever():
@@ -326,11 +326,29 @@ def data():
     assert material("S355", t=20)["Rp02"] == 345 and material("6082-T6", t=4)["Rp02"] == 250
     assert material("1.4301 plattstång varmvalsad", t=10)["Rp02"] == 190 and material("42CrMo4+QT", t=60)["Rp02"] == 650
     assert material("PA12 SLS (EOS PA 2200)")["Rm"] == 42                     # Z-riktning default
+    assert material("AA3104-H19 burkkropp", t=0.095)["Rp02"] == 293 and material("AA5182-H48 burklock", t=0.208)["E"] == 70000
     mall = pathlib.Path(__file__).resolve().parent.parent / "mallar" / "projektblad.json"
     if mall.exists():                                                          # finns i repo, ej i pip-installation
         saknas = projektblad.check(json.loads(mall.read_text(encoding="utf-8")))
         assert len(saknas) >= 5 and any(k.startswith("betraktarvy.fram") for k in saknas)
     print(f"Data: {len(materials())} material OK, projektbladskontroll OK")
+
+
+def shell_test():
+    """shell (CalculiX S8R, olinjärt): cylinder R 29, t 0,1, L 20 mm med Koiters axisymmetriska imperfektion 0,1t.
+    Hoppas över utan CalculiX."""
+    ver = shell.available()
+    if not ver:
+        print("Skal: CalculiX saknas i miljön, femtools.shell är INTE verifierad här (apt-get install -y calculix-ccx)")
+        return
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        r = shell.cylinder_collapse(td, xi=0.1)
+    print(f"Skal ccx {ver}: axiell styvhet {r['k']:.0f} N/mm (EA/L {r['k_hand']:.0f}, {r['k'] / r['k_hand'] - 1:+.1%}), "
+          f"kollaps {r['F_max']:.0f} N = {r['ratio']:.3f}·P_cl (Koiter {r['koiter']:.3f}, {r['ratio'] / r['koiter'] - 1:+.1%}), "
+          f"{r['n_nodes']} noder, {r['time']:.0f} s")
+    assert not r["peak_last"]                     # topp före sista inkrement (ccx avbryter efter kollaps)
+    assert abs(r["k"] / r["k_hand"] - 1) < 0.02 and abs(r["ratio"] / r["koiter"] - 1) < 0.06
 
 
 if __name__ == "__main__":
@@ -342,6 +360,7 @@ if __name__ == "__main__":
     buckling_test()
     cfd_test()
     openfoam_test()
+    shell_test()
     webreport_test()
     webreport_flow_test()
     data()
