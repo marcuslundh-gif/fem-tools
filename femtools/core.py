@@ -27,7 +27,7 @@ def static(m, E, nu, traction, fix="fix", load="load", D=None):
     """Linjär statik, P2. traction [MPa] på rand `load`, låsning på rand `fix` (eller egna DOF i D).
     Returnerar dict med basis, u, vm, sigma, xq, R (reaktioner), F (pålagd last), DOF."""
     e = ElementVector(ElementTetP2())
-    ib = Basis(m, e, intorder=4)
+    ib = Basis(m, e, intorder=2)        # exakt för P2-styvhet på raka tetraedrar, ca 3x snabbare än 4
     K = asm(linear_elasticity(*lame_parameters(E, nu)), ib)
     t = np.asarray(traction, float)
     fb = FacetBasis(m, e, facets=m.boundaries[load], intorder=4)
@@ -44,14 +44,15 @@ def static(m, E, nu, traction, fix="fix", load="load", D=None):
     R = [r[alld.all(f"u^{i+1}")][np.isin(alld.all(f"u^{i+1}"), np.asarray(Dd.all() if hasattr(Dd, "all") else Dd))].sum()
          for i in range(3)]
     F = [f[alld.all(f"u^{i+1}")].sum() for i in range(3)]
-    vm, s = von_mises(ib, u, E, nu)
-    return dict(basis=ib, u=u, vm=vm, sigma=s, xq=ib.mapping.F(ib.X), R=R, F=F, DOF=K.shape[0], solver=SOLVER_NAME)
+    sb = Basis(m, e, intorder=4)        # tätare punkter för spänningsmax (som i 1.0.0)
+    vm, s = von_mises(sb, u, E, nu)
+    return dict(basis=sb, u=u, vm=vm, sigma=s, xq=sb.mapping.F(sb.X), R=R, F=F, DOF=K.shape[0], solver=SOLVER_NAME)
 
 
 def modal(m, E, nu, rho, k=6, fix="fix"):
     """Egenfrekvenser [Hz] med rho i t/mm³."""
     from scipy.sparse.linalg import eigsh
-    ib = Basis(m, ElementVector(ElementTetP2()))
+    ib = Basis(m, ElementVector(ElementTetP2()), intorder=2)
     K = asm(linear_elasticity(*lame_parameters(E, nu)), ib)
 
     @BilinearForm
@@ -60,7 +61,16 @@ def modal(m, E, nu, rho, k=6, fix="fix"):
 
     M = asm(mass, ib)
     I = ib.complement_dofs(ib.get_dofs(fix))
-    w2, _ = eigsh(K[I][:, I], k=k, M=M[I][:, I], sigma=0)
+    A, MI = K[I][:, I].tocsr(), M[I][:, I].tocsr()
+    try:   # shift-invert med pypardiso (flertrådad), ca 4x snabbare än scipy splu
+        import pypardiso
+        from scipy.sparse.linalg import LinearOperator
+        ps = pypardiso.PyPardisoSolver()
+        ps.factorize(A)
+        op = LinearOperator(A.shape, matvec=lambda v: ps.solve(A, v), dtype=float)
+        w2, _ = eigsh(A, k=k, M=MI, sigma=0, OPinv=op)
+    except ImportError:  # pragma: no cover
+        w2, _ = eigsh(A, k=k, M=MI.tocsc(), sigma=0)
     return np.sort(np.sqrt(np.abs(w2)) / (2 * np.pi))
 
 

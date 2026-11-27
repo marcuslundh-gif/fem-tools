@@ -1,11 +1,12 @@
 # femtools
 
-Verifierade FEM-mallar för FEM-agenten: gmsh-meshning (HXT, lokal förfining, kvalitetskontroll)
-och scikit-fem P2-statik/modal med pypardiso. Enheter mm, N, MPa, t, s.
+Verifierade FEM-verktyg: gmsh-meshning (HXT, lokal förfining, kvalitetskontroll), scikit-fem P2-statik (traktion, tryck, egenvikt, rotation, termisk last), modalanalys, linjär knäckning värmeledning (stationär och transient), laminär CFD (Stokes/Navier-Stokes) med pypardiso, turbulent CFD via OpenFOAM, interaktiv HTML-rapport, materialdata med källor och projektblad med stoppkontroll. Enheter mm, N, MPa, t, s.
 
-Installera (claude.ai-container: först `apt-get install -y libglu1-mesa libxcursor1 libxinerama1 libxft2`):
+Repot är master för reglerna: [`docs/projektstandard.md`](docs/projektstandard.md) och registret över verifierade verktyg [`docs/verifiering.md`](docs/verifiering.md). Agentinstruktioner: [`CLAUDE.md`](CLAUDE.md).
 
-    pip install --break-system-packages git+https://github.com/<konto>/fem-tools
+Installera (gmsh kräver först `apt-get update && apt-get install -y libglu1-mesa libxcursor1 libxinerama1 libxft2` på Linux):
+
+    pip install git+https://github.com/marcuslundh-gif/fem-tools
 
 Verifiera:
 
@@ -13,4 +14,6 @@ Verifiera:
 
 Användning:
 
-    from femtools import mesh_step, static, modal, richardson
+    from femtools import mesh_step, static, modal, richardson, material, projektblad, report
+    pb = projektblad.load("inputs.json")
+    mat = material(pb["material"], t=pb["tjocklek_mm"])

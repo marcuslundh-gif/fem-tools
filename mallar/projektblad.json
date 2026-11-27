@@ -1,0 +1,25 @@
+{
+  "_info": "Mall för projektblad. Kopiera till <fallmapp>/inputs.json. null = ej ifyllt; femtools.projektblad.load() stoppar då. Lägg aldrig ifyllda projektblad i repot.",
+  "case": null,
+  "standardversion": "4.0",
+  "geometri": {"step": null, "enhet_kontrollerad": false, "forenklingar": []},
+  "material": null,
+  "tjocklek_mm": null,
+  "riktning_print": null,
+  "sakerhetsfaktorer": {"SF_y": null, "SF_u": null, "SF_f": null, "SF_b": null},
+  "deformationskrav": {"grans": "L/300", "L_mm": null, "punkt": null},
+  "lastfall": [
+    {"namn": null, "storlek": null, "enhet": "N", "riktning": null, "yta": null, "lastfaktor": 1.0, "kalla": null}
+  ],
+  "randvillkor": [
+    {"rand": null, "typ": null, "lasta_dof": [], "motivering": null, "osakerhet": null}
+  ],
+  "livslangd_cykler": null,
+  "drivfrekvenser_Hz": [],
+  "resonansmarginal": 0.20,
+  "temperatur_C": 20,
+  "miljo": null,
+  "tillamplig_standard": [],
+  "utvardering": {"storhet": null, "plats": null},
+  "antaget": []
+}
