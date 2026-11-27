@@ -1,6 +1,6 @@
 # Projektstandard för FEM-beräkningar
 
-Version 4.1, 2026-11-26. Ägare: Marcus Lundh.
+Version 4.3, 2026-11-26. Ägare: Marcus Lundh.
 
 Master: denna fil i GitHub-repot `fem-tools` (`docs/projektstandard.md`). Kopia i Google Drive-mappen "Projektstandard för FEM-beräkningar" synkas efter varje godkänd ändring.
 
@@ -15,6 +15,8 @@ Master: denna fil i GitHub-repot `fem-tools` (`docs/projektstandard.md`). Kopia 
 | 3.2 | 2026-11-19 | Värmeutvidgning α införd för alla material. Nya material med typvärden (ej minimivärden): PA12 SLS (EOS PA 2200), PA12 GB SLS (EOS PA 3200 GF), PA12 MJF (HP 3D HR PA 12), Alumide. Värden kontrollerade mot EOS, HP, Materialise och 3D Systems. |
 | 4.0 | 2026-11-26 | Master flyttad till GitHub-repot fem-tools så att alla agenter (Claude Code i molnet, lokalt och på jobbet) kör samma regler. claude.ai-specifika delar borttagna (2 kärnor/7 GB, kör klart inom svaret, synk till claude.ai-projektet). Verktygsregistret flyttat till `docs/verifiering.md` och rättat mot koden. Materialdata maskinläsbar i `femtools/materials.json`. Projektblad med stoppkontroll (`femtools.projektblad`). Regel för ANTAGET förtydligad, resonansmarginal 20 % även i skillen, sekretessregel för publikt repo. Revision via pull request. |
 | 4.1 | 2026-11-26 | Nya material: 1.4301 (rör, plattstång kapad och varmvalsad) och 42CrMo4+QT. Nya erfarenhetsposter: minnestak för kompakta solidmodeller, randfrihetsgrader vid summering av laster, solida rör i CAD, singulär topp i svetsrot och linjäriserad hot-spot. Regel: lastskiss och projektblad före beräkning gäller även handräkning och tippning. |
+| 4.2 | 2026-11-26 | femtools 1.3.0: `static_ext` (tryck, egenvikt, rotation, termisk last, randvillkor per komponent) `heat`/`heat_transient` (värmeledning med fast temperatur, flöde, konvektion, värmekälla) `buckling` (linjär knäckning, geometrisk styvhet från förspänningen), `flow` (laminär Stokes/Navier-Stokes, Taylor-Hood) `openfoam` (turbulent CFD med OpenFOAM, k-ω SST) och `webreport` (interaktiv HTML-rapport som komplement till PDF). Verifierade mot Lamé, roterande rör, hängande stång, rör med konvektion, Timoshenkos termiska rörspänning, inspänd stång, transient platta, Euler-pelare fall 1 och 3, Kovasznay, Hagen-Poiseuille och turbulent rör mot Colebrook; se `docs/verifiering.md`. Bygger på 4.1 (PR #2). |
+| 4.3 | 2026-11-26 | Erfarenheter från ett fall med STEP från Fusion 360, termik, superponerade lastfall och CFD i OpenFOAM: STEP-enhet, gmsh-fel på periodiska ytor, STEP → OpenFOAM-nät, efterbehandling utan surfaceFieldValue, minnestak och konvergens med liten nätkvot, AMG-prestanda. 1.4301 rör med temperaturberoende Rp0,2, λ och c_p i `materials.json`. Bygger på 4.2 (PR #3). |
 
 ## Användning
 
@@ -122,11 +124,18 @@ Riktvärden för elementstorlek:
 - Minst 2 kvadratiska element genom tjockleken i böjbelastade tunnväggiga delar, helst 3. Är tjockleken under ungefär 1/20 av spännvidden: överväg skalmodell eller balkmodell.
 - Lokal storlek h_loc vid kritisk yta, övergång till global storlek h_glob mellan 2·h_loc och 10·h_loc från ytan.
 - Konvergensstudien skalar h_glob och h_loc med samma faktor, minst 1,5 mellan nät.
+- Begränsar minnet finaste nätet: behåll h_glob och skala h_loc med 1,5 nedåt från det finaste nät som ryms. Ett nät med kvot under 1,2 ger brusig Richardson-extrapolering. Redovisa alla nivåer i tabell och ange avvikelsen från kravet.
 
 Kvalitetskrav innan lösning:
 
 - Elementkvalitet gamma (gmsh) minst 0,1 i hela nätet och minst 0,3 i utvärderingsområdet. Sämre element redovisas med position.
 - Inga lösa noder eller dubbla volymer. Kontrollera att nätets volym stämmer med CAD-volymen inom 0,5 %.
+
+STEP från CAD:
+
+- Kontrollera enheten med nätets bounding box mot ritningen innan nätning. Fusion 360 skriver alltid STEP i cm, även när dokumentet är i mm. Konvertera med OCCT (`STEPCAFControl_Writer`, `write.step.unit MM`) eller sätt `Geometry.OCCTargetUnit = "MM"` vid import.
+- gmsh läser inte kroppsnamnen i STEP. Identifiera solider via ordning och volym och redovisa volymen mot CAD.
+- Ger gmsh "Impossible to mesh periodic surface" (sömmar på cylindrar som korsas av radier): dela soliden i CAD i kvartar eller halvor genom symmetriplanen, exportera och slå ihop med `occ.fragment`, som ger ett konformt nät över snittytorna.
 
 Förenkling av geometri (defeaturing):
 
@@ -159,6 +168,8 @@ Effektivitet:
 - Minnet växer ungefär 25 GB per miljon DOF. Med 70 %-regeln ger det ett tak kring 400 000 DOF i molnet. Kompakta detaljer ger mer fill-in än en slank balk och därmed lägre tak: mät alltid de två grövsta näten. Större modeller körs lokalt.
 - Assembleringen tar mer tid än lösningen. Kör därför flera lastfall på samma assemblerade matris i stället för att anropa `static` en gång per lastfall.
 - Den tidigare claude.ai-containern (2 kärnor, 7 GB) klarade cirka 300 000 DOF.
+- Kompakt svetsad detalj (rör, flänsar, konsoler, 5 superponerade lastfall med spänningar sparade): 206 000 DOF 7,9 GB, 265 000 DOF 8,0 GB, 382 000 DOF 11,4 GB, 90–210 s per nät.
+- pyamg (smoothed aggregation med stelkroppsmoder, CG, tol 1e-10) löste 265 000 DOF på 374 s per lastfall mot 20 s med pypardiso: 15–30 gånger långsammare. Bara för ett fåtal lastfall när pypardiso inte ryms i minnet; verifiera mot pypardiso på ett grövre nät.
 
 ## Verifiering
 
@@ -191,6 +202,8 @@ Detaljerade krav och mall finns i skillen fem-rapport. Kärnreglerna:
 - Fallmapp: `<projektmapp på Drive>/FEM/<YYMMDD_case>/` med `inputs.json` (projektblad), `src/` (skript, handräkning), `results/` (nät, resultatfiler), `fig/` och `report.md`. Arbetskopia i molnet läggs utanför repot (t.ex. `~/fem-cases/<YYMMDD_case>/`); `cases/` och `results/` är spärrade i `.gitignore`.
 - Rapport som PDF (stående A4), filnamn `YYMMDD <namn>.pdf`, när rapporten ska delas. Skisser och diagram som SVG, fältplottar som PNG.
 - Lastskiss först (fig. 1): ritad från analyserad geometri med alla laster (storlek, riktning, angreppsyta, lastfall), alla upplag med låsta DOF, symmetriplan, koordinatsystem, mått och reaktionskrafter. Antaganden märks [ANTAGET]. BC-tabell under skissen.
+- Figurerna nedan och i skillen fem-rapport (fig. 1–7) är ett minimum, inte ett tak. Agenten lägger själv till de figurer som behövs för att förstå resultatet eller fatta beslutet, till exempel utnyttjandegrad, huvudspänningsriktningar (lastväg), kontakttryck, modformer, känslighetsstudie eller jämförelse före och efter en ändring. Varje extra figur har samma bildtext som övriga plus en mening om varför den behövs.
+- Figurerna byggs med byggstenarna i `femtools.report` (L2-projektion, snittuttag, enhetlig stil). Ny figurtyp som blir återkommande läggs in där med test.
 - Resultatbilder: deformation (hel modell, förstoringsfaktor angiven), von Mises (skala 0 till Rp0,2, max markerat), detaljvy med nät kring kritisk punkt, minst två snitt (snittplan markerade i översiktsbilden, samma färgskala), konvergensplott. Modform eller bucklingform när relevant.
 - Varje resultatbild har bildtext med siffror: vad som visas, var och hur stort (utnyttjandegrad mot gräns), varför, tillförlitlighet (konvergerat, singularitet) och konsekvens.
 - Skilj VERIFIERAT från ANTAGET.
@@ -221,6 +234,14 @@ Lärdomar från genomförda beräkningar. Varje post: datum, projekt, lärdom, �
 | 2026-11-26 | Allmänt | `basis.get_dofs()` utan argument ger bara randens frihetsgrader. Summering av pålagd last med volymkraft blev 10 % fel i jämviktskontrollen. | Summera per komponent över `nodal_dofs[i]` och `edge_dofs[i]` (P2). |
 | 2026-11-26 | Allmänt | Rör ritade som solida stänger i CAD (förenklad modell) gav fel massa och styvhet. | Jämför STEP-volym per balk med katalogens kg/m före meshning. Ersätt med verkligt tvärsnitt. |
 | 2026-11-26 | Allmänt | Spänningen 4–12 mm från ett inre hörn vid svetsrot växte med förfiningen (111 → 137 MPa) fast den låg utanför hörnet. | Utvärdera svetsdetaljer med linjäriserad spänning per snitt (minsta kvadrat-anpassning a + b·y + c·z) och IIW hot-spot 0,4t/1,0t, inte max i en zon. |
+| 2026-11-26 | Allmänt | En fast rapportfunktion med ett givet antal figurer styr agenten mot just de figurerna. | femtools.report byggd som byggstenar; standardfigurerna är minimum och agenten väljer extra figurer med motivering. |
+| 2026-11-26 | Allmänt | Fusion 360 exporterar STEP i cm oavsett dokumentets enhet. | Enhetskontroll av STEP före nätning (Meshning, STEP från CAD). |
+| 2026-11-26 | Allmänt | gmsh 4.x kunde inte näta en Fusion-solid ("Impossible to mesh periodic surface"); ombyggnad i gmsh OCC med samma radier misslyckades på fillets. Kvartsdelning i CAD + `occ.fragment` fungerade. | Rutin i Meshning, STEP från CAD. |
+| 2026-11-26 | Allmänt | Konvergens av max von Mises i ett hörn med R4 sjönk med finare nät (107 → 81 → 70 MPa): grova nät med låg elementkvalitet (γ 0,01–0,03) överskattar. | Avtagande serie: finaste värdet är konservativt. Kontrollera γ i utvärderingsområdet. |
+| 2026-11-26 | Allmänt | Toppvärde i integrationspunkt och L2-projicerat nodvärde skiljer upp till 25 % i hörn. | Utvärdera max av båda och redovisa vilket som styr. |
+| 2026-11-26 | Allmänt | OpenFOAM v1912 från apt: functionObject `surfaceFieldValue` kraschar ("IOstream sha1"), `#includeFunc` med argument tolkas inte, scotch saknas (decomposePar method hierarchical fungerar). | Efterbehandla Δp och flöde i Python ur polyMesh och tidskataloger; inga function objects i controlDict. |
+| 2026-11-26 | Allmänt | STEP → OpenFOAM: gmsh-tetraeder med fysiska grupper inlet/outlet/walls, msh 2.2, `gmshToFoam`, `transformPoints -scale 0.001`; väggpatchen blir typ `patch` och måste ändras till `wall` för väggfunktioner. Inloppshastigheten ska räknas mot nätets facetterade area (1,6 % mindre än cirkeln). | Står i CFD-reglerna i `CLAUDE.md`. |
+| 2026-11-26 | Allmänt | Facetterade ytor ger fel resultantkraft om traktion räknas mot teoretisk area (stutsände 179 mot 199 mm², last 180 i stället för 200 N). | Räkna traktion som F / nätets area och kontrollera ΣR per delfall. |
 
 ## Revisionsprocess
 
