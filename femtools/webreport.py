@@ -15,6 +15,14 @@ direkt i PowerPoint, Excel och Word). Sidan publiceras som artifact eller öppna
     w.text("Slutsats", "Utnyttjandegrad 0,62 ...")
     w.write("fig/rapport.html")
 
+Betraktarvy (standard 5.0): ange produktens framsida med front, riktningen från produkten mot betraktaren,
+och up. Sidan öppnar i "Fram iso" så att modellen syns som en människa ser den framför produkten, inte från
+väggen eller underlaget. Exempel, produkt skruvad mot en vägg i y = −120: front=(0, 1, 0), up=(0, 0, 1).
+
+CFD i samma visare: f = openfoam.read_case(fall, rho=998); w.flow("D2 spolning", f, slices={"y": 0},
+seeds=...) lägger vätskedomänen som eget fall med |U| i snitt, väggtryck och strömlinjer. Strukturen visas
+då som genomskinlig kontur. Snittplan (x, y, z) finns för alla fall.
+
 Bara ytan skickas till sidan (randtrianglar och deras noder), så sidan blir liten: cirka 60 byte per
 ytnod och fält. Över cirka 200 000 ytnoder: grovare nät för visning, eller skriv data som separat fil.
 """
@@ -31,9 +39,106 @@ def vertex_values(basis, x):
     return np.asarray(x)[basis.nodal_dofs[0]]
 
 
+def slice_tets(P, tet, val, axis, value):
+    """Plant snitt genom ett tetraedernät (marching tetrahedra). P (n, 3), tet (nc, 4), val (n,) nodvärden.
+    axis 0/1/2 eller "x"/"y"/"z". Returnerar (punkter (m, 3), trianglar (k, 3), värden (m,)), linjärt interpolerat."""
+    ax = "xyz".index(axis) if isinstance(axis, str) else int(axis)
+    d = P[:, ax] - value
+    pos = d[tet] > 0
+    nn = pos.sum(1)
+    cut = np.where((nn > 0) & (nn < 4))[0]
+    pts, vals, tris = [], [], []
+    E = ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3))
+    o = [i for i in range(3) if i != ax]
+    for c in cut:
+        v = tet[c]
+        q = []
+        for a, b in E:
+            ia, ib = v[a], v[b]
+            if (d[ia] > 0) != (d[ib] > 0):
+                w = d[ia] / (d[ia] - d[ib])
+                q.append((P[ia] + w * (P[ib] - P[ia]), val[ia] + w * (val[ib] - val[ia])))
+        if len(q) == 4:                       # fyrhörning: ordna runt mittpunkten
+            X = np.array([x for x, _ in q]); cen = X.mean(0)
+            q = [q[i] for i in np.argsort(np.arctan2(X[:, o[1]] - cen[o[1]], X[:, o[0]] - cen[o[0]]))]
+        i0 = len(pts)
+        tris += [[i0, i0 + 1, i0 + 2]] + ([[i0, i0 + 2, i0 + 3]] if len(q) == 4 else [])
+        for x, u in q:
+            pts.append(x); vals.append(u)
+    if not pts:
+        return np.zeros((0, 3)), np.zeros((0, 3), int), np.zeros(0)
+    pts = np.array(pts)
+    uq, first, inv = np.unique(np.round(pts, 6), axis=0, return_index=True, return_inverse=True)
+    return pts[first], inv.ravel()[np.array(tris)], np.asarray(vals)[first]
+
+
+def streamlines(P, tet, U, seeds, ds=None, max_steps=4000, nudges=300):
+    """Strömlinjer i ett nodalt hastighetsfält på tetraedrar (RK2, fast steglängd ds i längdenheten för P).
+    Vid väggen (punkten hamnar utanför nätet) knuffas linjen mot senaste cellens mittpunkt, högst `nudges` gånger
+    totalt och 8 i följd (då har linjen nått utloppet eller fastnat i en stagnationspunkt).
+    Returnerar lista med (punkter (k, 3), fart (k,)). Visualisering: ingen massbalans per linje."""
+    from scipy.spatial import cKDTree
+    T = P[tet]
+    cen = T.mean(1)
+    tree = cKDTree(cen)
+    Minv = np.linalg.inv(np.transpose(T[:, 1:] - T[:, :1], (0, 2, 1)))
+    Um = np.linalg.norm(U, axis=1)
+    umin = 1e-4 * Um.max()
+    if ds is None:
+        ds = 0.5 * np.cbrt(np.abs(np.linalg.det(T[:, 1:] - T[:, :1])).mean() / 6)
+
+    def vel(x, guess):
+        for k in (16, 128):
+            ids = tree.query(x, k=min(k, len(cen)))[1]
+            if guess is not None:
+                ids = np.concatenate([[guess], ids])
+            for c in ids:
+                lam = Minv[c] @ (x - T[c, 0])
+                bc = np.array([1 - lam.sum(), *lam])
+                if bc.min() > -1e-9:
+                    return bc @ U[tet[c]], c
+        return None, None
+
+    out = []
+    for x in np.asarray(seeds, float):
+        u0, g = vel(x, None)
+        if u0 is None:
+            continue
+        X, S, nk, nrow, ok_steps = [x.copy()], [np.linalg.norm(u0)], 0, 0, 0
+        for _ in range(max_steps):
+            u1, g1 = vel(x, g)
+            ok = u1 is not None and np.linalg.norm(u1) > umin
+            if ok:
+                u2, g2 = vel(x + 0.5 * ds * u1 / np.linalg.norm(u1), g1)
+                ok = u2 is not None and np.linalg.norm(u2) > umin
+            if ok:
+                xn = x + ds * u2 / np.linalg.norm(u2)
+                ok = vel(xn, g2)[0] is not None
+            if not ok:
+                if nk >= nudges or nrow >= 8 or g is None or u1 is None:     # utlopp eller fast i stagnation
+                    break
+                nk += 1; nrow += 1; ok_steps = 0
+                x = x + ds * (cen[g] - x) / max(np.linalg.norm(cen[g] - x), 1e-12)
+                continue
+            x, g, ok_steps = xn, g2, ok_steps + 1
+            if ok_steps >= 3:
+                nrow = 0
+            X.append(x.copy()); S.append(np.linalg.norm(u2))
+        if len(X) > 3:
+            out.append((np.array(X), np.array(S)))
+    return out
+
+
 class Report:
-    def __init__(self, title, meta=None, subtitle=None):
+    def __init__(self, title, meta=None, subtitle=None, front=(0, -1, 0), up=(0, 0, 1)):
+        """front: riktning från produkten mot betraktaren (produktens framsida), up: uppåt. Startvyn är
+        "Fram iso" från front. Ange alltid front för produkter med en given monteringsriktning."""
         self.title, self.subtitle = title, subtitle
+        f, u = np.asarray(front, float), np.asarray(up, float)
+        if abs(np.dot(f, u)) > 1e-6 * np.linalg.norm(f) * np.linalg.norm(u):
+            raise ValueError("front och up måste vara vinkelräta")
+        self.front, self.up = (f / np.linalg.norm(f)).tolist(), (u / np.linalg.norm(u)).tolist()
+        self.flows = []
         self.meta = dict(meta or {})
         self.meta.setdefault("Skapad", datetime.date.today().isoformat())
         try:
@@ -77,6 +182,31 @@ class Report:
                                 at=self._surf["p"][imax].round(3).tolist()))
         return self
 
+    def flow(self, case, f, slices=None, seeds=None, ds=None, wall="walls", unitU="m/s", unitp="Pa", digits=4):
+        """CFD-fält som eget fall: f från openfoam.read_case (P, tet, U, p, patches) eller en dict med samma nycklar.
+        slices {"y": 0.0, ...}: plana snitt med |U|. seeds (k, 3): startpunkter för strömlinjer (t.ex. på inloppet).
+        Väggpatchen ritas med nodalt tryck p."""
+        P, tet, U = np.asarray(f["P"], float), np.asarray(f["tet"]), np.asarray(f["U"], float)
+        Um = np.linalg.norm(U, axis=1)
+        fl = dict(name=case, slices=[], wall=None, stream=[], unitU=unitU, unitp=unitp,
+                  Umax=float(Um.max()), time=f.get("time"))
+        for ax, v in (slices or {}).items():
+            pts, tri, val = slice_tets(P, tet, Um, ax, v)
+            fl["slices"].append(dict(name=f"{ax} = {v:g}", p=np.round(pts, 3).ravel().tolist(),
+                                     tri=tri.ravel().astype(int).tolist(), values=_sig(val, digits)))
+        wt = f.get("patches", {}).get(wall)
+        if wt is not None and f.get("p") is not None:
+            used = np.unique(wt); rm = -np.ones(len(P), int); rm[used] = np.arange(len(used))
+            pv = np.asarray(f["p"], float)[used]
+            fl["wall"] = dict(p=np.round(P[used], 3).ravel().tolist(), tri=rm[wt].ravel().astype(int).tolist(),
+                              values=_sig(pv, digits), min=float(pv.min()), max=float(pv.max()))
+        if seeds is not None:
+            for X, S in streamlines(P, tet, U, seeds, ds=ds):
+                X, S = X[::2], S[::2]
+                fl["stream"].append(dict(p=np.round(X, 2).ravel().tolist(), values=_sig(S, 3)))
+        self.flows.append(fl)
+        return self
+
     # ------------------------------------------------------------------ text och tabeller
     def table(self, title, columns, rows, caption=None):
         """Tabell; rader som listor (tal formateras med svensk decimalkomma vid visning och kopiering)."""
@@ -92,7 +222,7 @@ class Report:
     # ------------------------------------------------------------------ utdata
     def data(self):
         s = self._surf
-        return dict(title=self.title, subtitle=self.subtitle, meta=self.meta,
+        return dict(title=self.title, subtitle=self.subtitle, meta=self.meta, front=self.front, up=self.up, flows=self.flows,
                     mesh=None if s is None else dict(p=np.round(s["p"], 4).ravel().tolist(),
                                                      tri=s["tri"].ravel().astype(int).tolist()),
                     cases=list(self.cases.values()), blocks=self.blocks)
@@ -193,6 +323,7 @@ tr:last-child td{border-bottom:0}
 .nodata{padding:24px;color:var(--muted)}
 @media print{.controls,.caption button{display:none}.viewer{grid-template-columns:1fr}body{background:#fff}}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+[hidden]{display:none!important}
 </style>
 <script src="__THREE__"></script>
 <script src="__ORBIT__"></script>
@@ -215,9 +346,13 @@ tr:last-child td{border-bottom:0}
       <label for="scale">Deformationsskala <span class="scaleval" id="scalev"></span><input type="range" id="scale" min="0" max="100" value="0"></label>
       <label class="check" for="edges"><input type="checkbox" id="edges"> Visa nät</label>
       <label class="check" for="maxm"><input type="checkbox" id="maxm" checked> Markera max</label>
+      <label class="check" for="strm" id="strmrow" hidden><input type="checkbox" id="strm" checked> Strömlinjer</label>
+      <label for="clipax">Snittplan<select id="clipax"><option value="">Av</option><option value="0">x</option><option value="1">y</option><option value="2">z</option></select></label>
+      <label for="clip" id="cliprow" hidden>Läge <span class="scaleval" id="clipv"></span><input type="range" id="clip" min="0" max="1000" value="500"></label>
+      <label class="check" for="clipf" id="clipfrow" hidden><input type="checkbox" id="clipf"> Vänd snittsida</label>
       <div class="row" role="group" aria-label="Vy">
-        <button type="button" data-view="iso" class="primary">Iso</button>
-        <button type="button" data-view="x">X</button><button type="button" data-view="y">Y</button><button type="button" data-view="z">Z</button>
+        <button type="button" data-view="iso" class="primary">Fram iso</button><button type="button" data-view="front">Fram</button>
+        <button type="button" data-view="top">Topp</button><button type="button" data-view="side">Sida</button><button type="button" data-view="back">Bak</button>
       </div>
     </div>
   </div>
@@ -279,38 +414,85 @@ if (!D.mesh || !window.THREE){ $("stage").innerHTML='<div class="nodata">3D-vyn 
 else (function(){
   const P = new Float32Array(D.mesh.p), N = P.length/3, T = new Uint32Array(D.mesh.tri);
   const cv=$("cv"), renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true,preserveDrawingBuffer:true});
-  renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
+  renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1)); renderer.localClippingEnabled=true;
+  const clipP=new THREE.Plane(new THREE.Vector3(0,0,-1),1e9), CL=[clipP];
   const scene=new THREE.Scene(), cam=new THREE.PerspectiveCamera(35,1.6,1e-3,1e7);
   scene.add(new THREE.HemisphereLight(0xffffff,0x6b7480,0.85)); const dl=new THREE.DirectionalLight(0xffffff,0.45); cam.add(dl); scene.add(cam);
   const geo=new THREE.BufferGeometry(); const pos=new Float32Array(P); const col=new Float32Array(N*3);
   geo.setAttribute("position",new THREE.BufferAttribute(pos,3)); geo.setAttribute("color",new THREE.BufferAttribute(col,3));
   geo.setIndex(new THREE.BufferAttribute(T,1)); geo.computeBoundingSphere();
-  const mat=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.FrontSide,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1});
+  const mat=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.FrontSide,clippingPlanes:CL,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1});
   const mesh=new THREE.Mesh(geo,mat); scene.add(mesh);
-  const wire=new THREE.LineSegments(new THREE.WireframeGeometry(geo),new THREE.LineBasicMaterial({transparent:true,opacity:0.35}));
+  const wire=new THREE.LineSegments(new THREE.WireframeGeometry(geo),new THREE.LineBasicMaterial({transparent:true,opacity:0.35,clippingPlanes:CL}));
   wire.visible=false; scene.add(wire);
   const bs=geo.boundingSphere, R=bs.radius||1;
   const marker=new THREE.Mesh(new THREE.SphereGeometry(R*0.025,16,12),new THREE.MeshBasicMaterial({color:0x000000})); scene.add(marker);
   const ctl=new THREE.OrbitControls(cam,cv); ctl.target.copy(bs.center); ctl.enableDamping=true;
-  function view(k){ const c=bs.center, d=R*3.2; const v={iso:[1,-1.2,0.9],x:[1,0,0],y:[0,-1,0],z:[0,0,1]}[k];
-    const n=Math.hypot(...v); cam.position.set(c.x+d*v[0]/n,c.y+d*v[1]/n,c.z+d*v[2]/n); cam.up.set(0,0,1); if(k==="z") cam.up.set(0,1,0); ctl.update(); }
+  // betraktarvy: F = mot betraktaren (produktens framsida), Uv = upp, S = betraktarens högra sida
+  const F=new THREE.Vector3(...(D.front||[0,-1,0])), Uv=new THREE.Vector3(...(D.up||[0,0,1])), S=new THREE.Vector3().crossVectors(Uv,F);
+  function view(k){ const c=bs.center, d=R*3.2;
+    const v={iso:F.clone().add(S.clone().multiplyScalar(-0.45)).add(Uv.clone().multiplyScalar(0.45)), front:F.clone(),
+             top:Uv.clone().add(F.clone().multiplyScalar(0.02)), side:S.clone(), back:F.clone().negate()}[k].normalize();
+    cam.position.set(c.x+d*v.x,c.y+d*v.y,c.z+d*v.z); cam.up.copy(k==="top"?F.clone().negate():Uv); ctl.update(); }
   document.querySelectorAll("[data-view]").forEach(b=>b.addEventListener("click",()=>{view(b.dataset.view);
     document.querySelectorAll("[data-view]").forEach(x=>x.classList.toggle("primary",x===b));}));
   view("iso");
 
   const sc=$("case"), sf=$("fld"), ss=$("scale");
   D.cases.forEach((c,i)=>sc.add(new Option(c.name,i)));
-  function fillFields(){ const c=D.cases[+sc.value]; const prev=sf.selectedOptions[0]?.text; sf.innerHTML="";
-    c.fields.forEach((f,i)=>sf.add(new Option(f.name+" ["+f.unit+"]",i)));
-    const j=c.fields.findIndex(f=>f.name+" ["+f.unit+"]"===prev); if(j>=0) sf.value=j; }
+  // CFD-fall: snitt (|U|), vägg (p), strömlinjer; strukturen visas som genomskinlig kontur
+  const ghost=new THREE.MeshLambertMaterial({color:0x9aa7b4,transparent:true,opacity:0.16,depthWrite:false,side:THREE.DoubleSide,clippingPlanes:CL});
+  function tmesh(o,basic){ const g=new THREE.BufferGeometry(); const p=new Float32Array(o.p); g.setAttribute("position",new THREE.BufferAttribute(p,3));
+    g.setAttribute("color",new THREE.BufferAttribute(new Float32Array(p.length),3)); g.setIndex(new THREE.BufferAttribute(new Uint32Array(o.tri),1));
+    g.computeVertexNormals(); g.userData.v=o.values; return new THREE.Mesh(g, basic? new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,clippingPlanes:CL})
+      : new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide,clippingPlanes:CL})); }
+  const FL=(D.flows||[]).map((f,i)=>{ sc.add(new Option("CFD: "+f.name,"f"+i)); const grp=new THREE.Group(); grp.visible=false; scene.add(grp);
+    const sl=f.slices.map(o=>{const m=tmesh(o,true); grp.add(m); return m;}); const wall=f.wall? tmesh(f.wall,false):null; if(wall) grp.add(wall);
+    const pos=[], v=[]; f.stream.forEach(L=>{ for(let k=0;k<L.values.length-1;k++){ pos.push(...L.p.slice(3*k,3*k+6)); v.push(L.values[k],L.values[k+1]); }});
+    const g=new THREE.BufferGeometry(); g.setAttribute("position",new THREE.Float32BufferAttribute(pos,3)); g.setAttribute("color",new THREE.Float32BufferAttribute(new Float32Array(pos.length),3));
+    g.userData.v=v; const st=new THREE.LineSegments(g,new THREE.LineBasicMaterial({vertexColors:true,clippingPlanes:CL})); grp.add(st);
+    return {f,grp,sl,wall,st}; });
+  const isFlow=()=>String(sc.value).startsWith("f");
+  function fillFields(){ const prev=sf.selectedOptions[0]?.text; sf.innerHTML="";
+    if (isFlow()){ const o=FL[+sc.value.slice(1)].f; if(o.slices.length) sf.add(new Option("|U| i snitt ["+o.unitU+"]","U")); if(o.wall) sf.add(new Option("p på vägg ["+o.unitp+"]","p")); }
+    else D.cases[+sc.value].fields.forEach((f,i)=>sf.add(new Option(f.name+" ["+f.unit+"]",i)));
+    const j=[...sf.options].findIndex(o=>o.text===prev); if(j>=0) sf.selectedIndex=j; }
   function autoScale(c){ if(!c.u) return 0; let um=0; for(let i=0;i<c.u.length;i+=3) um=Math.max(um,Math.hypot(c.u[i],c.u[i+1],c.u[i+2]));
     return um>0? 0.08*2*R/um : 0; }
   function themeColors(){ renderer.setClearColor(new THREE.Color(css("--canvas")||"#eef1f4"));
     wire.material.color.set(css("--mesh")||"#20303f"); marker.material.color.set(css("--ink")||"#16202a"); }
+  function paint(g,vals,lo,hi){ const c=g.attributes.color.array; for(let i=0;i<vals.length;i++) c.set(turbo((vals[i]-lo)/(hi-lo)),3*i); g.attributes.color.needsUpdate=true; }
+  function legend(lo,hi,unit,limit,label){
+    const stops=[]; for(let k=0;k<=10;k++){const [r,g,b]=turbo(k/10); stops.push(`rgb(${r*255|0},${g*255|0},${b*255|0}) ${k*10}%`);}
+    $("bar").style.background=`linear-gradient(to top, ${stops.join(",")})`;
+    const tk=$("ticks"); tk.querySelectorAll("span:not(.unit)").forEach(e=>e.remove()); $("unit").textContent=unit;
+    for(let k=0;k<=5;k++){ const v=lo+(hi-lo)*k/5, e=document.createElement("span"); e.style.bottom=(k*20)+"%"; e.textContent=fmt(v,3); tk.appendChild(e); }
+    if (limit!=null && limit>=lo && limit<=hi){ const e=document.createElement("span"); e.className="lim";
+      e.style.bottom=(100*(limit-lo)/(hi-lo))+"%"; e.textContent="◂ "+(label||"gräns")+" "+fmt(limit,3); tk.appendChild(e); } }
+  function clip(){ const ax=$("clipax").value; ["cliprow","clipfrow"].forEach(id=>$(id).hidden=ax==="");
+    if(ax===""){ clipP.normal.set(0,0,-1); clipP.constant=1e9; return; }
+    const a=+ax, bb=new THREE.Box3().setFromBufferAttribute(geo.attributes.position); const lo=bb.min.getComponent(a), hi=bb.max.getComponent(a);
+    const v=lo+(hi-lo)*(+$("clip").value)/1000, n=[0,0,0]; n[a]=$("clipf").checked?1:-1;
+    // standardsida: behåll halvan bort från betraktaren så att snittet syns framifrån
+    if (Math.abs([F.x,F.y,F.z][a])>0.5 && [F.x,F.y,F.z][a]<0) n[a]=-n[a];
+    clipP.normal.set(...n); clipP.constant=-n[a]*v+1e-3*(hi-lo); $("clipv").textContent="xyz"[a]+" = "+fmt(v,4); }
   function update(){
+    clip();
+    const flow=isFlow(); $("strmrow").hidden=!flow; FL.forEach(o=>o.grp.visible=false);
+    if (flow){
+      const o=FL[+sc.value.slice(1)], f=o.f; o.grp.visible=true; mesh.material=ghost; marker.visible=false; ss.disabled=true; $("scalev").textContent="–";
+      for(let i=0;i<3*N;i++) pos[i]=P[i]; geo.attributes.position.needsUpdate=true; geo.computeVertexNormals();
+      const U=sf.value==="U"; o.sl.forEach(m=>m.visible=U); if(o.wall) o.wall.visible=!U; o.st.visible=$("strm").checked;
+      let lo=0, hi=f.Umax||1;
+      if (U){ o.sl.forEach(m=>paint(m.geometry,m.geometry.userData.v,lo,hi)); legend(lo,hi,f.unitU); }
+      else { lo=f.wall.min; hi=f.wall.max>lo?f.wall.max:lo+1; paint(o.wall.geometry,o.wall.geometry.userData.v,lo,hi); legend(lo,hi,f.unitp); }
+      paint(o.st.geometry,o.st.geometry.userData.v,0,f.Umax||1);
+      $("readout").innerHTML=`${U?"|U| max <b>"+fmt(f.Umax,4)+" "+f.unitU+"</b>":"p <b>"+fmt(f.wall.min,4)+" … "+fmt(f.wall.max,4)+" "+f.unitp+"</b>"}${f.time?", iteration "+f.time:""}`;
+      return;
+    }
+    mesh.material=mat;
     const c=D.cases[+sc.value], f=c.fields[+sf.value]; const lo=f.min, hi=f.max>f.min?f.max:f.min+1;
-    for(let i=0;i<N;i++){ const rgb=turbo((f.values[i]-lo)/(hi-lo)); col.set(rgb,3*i); }
-    geo.attributes.color.needsUpdate=true;
+    paint(geo,f.values,lo,hi);
     const auto=autoScale(c); ss.disabled=!c.u; const s=c.u? auto*(+ss.value/25) : 0;
     $("scalev").textContent = c.u ? (s>0? "× "+fmt(s,3)+(+ss.value===25?" (auto)":"") : "av") : "ingen förskjutning";
     for(let i=0;i<3*N;i++) pos[i]=P[i]+(c.u? s*c.u[i]:0);
@@ -318,16 +500,13 @@ else (function(){
     wire.geometry.dispose(); wire.geometry=new THREE.WireframeGeometry(geo);
     let im=0; for(let i=1;i<N;i++) if(f.values[i]>f.values[im]) im=i; marker.position.set(pos[3*im],pos[3*im+1],pos[3*im+2]);
     marker.visible=$("maxm").checked;
-    // färgskala
-    const stops=[]; for(let k=0;k<=10;k++){const [r,g,b]=turbo(k/10); stops.push(`rgb(${r*255|0},${g*255|0},${b*255|0}) ${k*10}%`);}
-    $("bar").style.background=`linear-gradient(to top, ${stops.join(",")})`;
-    const tk=$("ticks"); tk.querySelectorAll("span:not(.unit)").forEach(e=>e.remove()); $("unit").textContent=f.unit;
-    for(let k=0;k<=5;k++){ const v=lo+(hi-lo)*k/5, e=document.createElement("span"); e.style.bottom=(k*20)+"%"; e.textContent=fmt(v,3); tk.appendChild(e); }
-    if (f.limit!=null && f.limit>=lo && f.limit<=hi){ const e=document.createElement("span"); e.className="lim";
-      e.style.bottom=(100*(f.limit-lo)/(hi-lo))+"%"; e.textContent="◂ "+(f.limit_label||"gräns")+" "+fmt(f.limit,3); tk.appendChild(e); }
+    legend(lo,hi,f.unit,f.limit,f.limit_label);
     const util = f.limit? `, utnyttjande <b>${fmt(f.max/f.limit,3)}</b>`:"";
     $("readout").innerHTML=`max <b>${fmt(f.max,4)} ${f.unit}</b> vid (${f.at.map(x=>fmt(x,4)).join("; ")}) mm, min <b>${fmt(f.min,4)}</b>${util}`;
   }
+  ["clip","clipf","strm"].forEach(id=>$(id).addEventListener("input",update));
+  $("clipax").addEventListener("input",()=>{ const ax=$("clipax").value; if(ax!==""){ const bb=new THREE.Box3().setFromBufferAttribute(geo.attributes.position);
+    const lo=bb.min.getComponent(+ax), hi=bb.max.getComponent(+ax); $("clip").value = (lo<0&&hi>0)? Math.round(1000*(0-lo)/(hi-lo)) : 500; } update(); });
   sc.addEventListener("change",()=>{fillFields();update();}); sf.addEventListener("change",update);
   ss.addEventListener("input",update); $("edges").addEventListener("change",e=>{wire.visible=e.target.checked;});
   $("maxm").addEventListener("change",update);

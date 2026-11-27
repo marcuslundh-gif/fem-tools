@@ -1,6 +1,6 @@
 # Projektstandard för FEM-beräkningar
 
-Version 4.3, 2026-11-26. Ägare: Marcus Lundh.
+Version 5.0, 2026-11-27. Ägare: Marcus Lundh.
 
 Master: denna fil i GitHub-repot `fem-tools` (`docs/projektstandard.md`). Kopia i Google Drive-mappen "Projektstandard för FEM-beräkningar" synkas efter varje godkänd ändring.
 
@@ -17,6 +17,7 @@ Master: denna fil i GitHub-repot `fem-tools` (`docs/projektstandard.md`). Kopia 
 | 4.1 | 2026-11-26 | Nya material: 1.4301 (rör, plattstång kapad och varmvalsad) och 42CrMo4+QT. Nya erfarenhetsposter: minnestak för kompakta solidmodeller, randfrihetsgrader vid summering av laster, solida rör i CAD, singulär topp i svetsrot och linjäriserad hot-spot. Regel: lastskiss och projektblad före beräkning gäller även handräkning och tippning. |
 | 4.2 | 2026-11-26 | femtools 1.3.0: `static_ext` (tryck, egenvikt, rotation, termisk last, randvillkor per komponent) `heat`/`heat_transient` (värmeledning med fast temperatur, flöde, konvektion, värmekälla) `buckling` (linjär knäckning, geometrisk styvhet från förspänningen), `flow` (laminär Stokes/Navier-Stokes, Taylor-Hood) `openfoam` (turbulent CFD med OpenFOAM, k-ω SST) och `webreport` (interaktiv HTML-rapport som komplement till PDF). Verifierade mot Lamé, roterande rör, hängande stång, rör med konvektion, Timoshenkos termiska rörspänning, inspänd stång, transient platta, Euler-pelare fall 1 och 3, Kovasznay, Hagen-Poiseuille och turbulent rör mot Colebrook; se `docs/verifiering.md`. Bygger på 4.1 (PR #2). |
 | 4.3 | 2026-11-26 | Erfarenheter från ett fall med STEP från Fusion 360, termik, superponerade lastfall och CFD i OpenFOAM: STEP-enhet, gmsh-fel på periodiska ytor, STEP → OpenFOAM-nät, efterbehandling utan surfaceFieldValue, minnestak och konvergens med liten nätkvot, AMG-prestanda. 1.4301 rör med temperaturberoende Rp0,2, λ och c_p i `materials.json`. Bygger på 4.2 (PR #3). |
+| 5.0 | 2026-11-27 | Nya regler: betraktarvy framifrån för alla vyer (3D-visare, lastskiss, resultatbilder, CAD-vyer och skisser) med framsidan i projektbladet (`betraktarvy`, krävs av `projektblad.check` från 5.0); interaktiv 3D-visare (`femtools.webreport`) är standardleverans i varje beräkning, med CFD-fält när CFD ingår; CFD kräver nätstudie med minst två nät och sparat nät. femtools 1.4.0: `webreport` med betraktarvy, snittplan och CFD-lager (`flow`, `slice_tets`, `streamlines`), `openfoam.read_case`. |
 
 ## Användning
 
@@ -181,6 +182,22 @@ Obligatoriskt för varje beräkningsfall:
 - Rimlighet: deformationsform (skalad plott), tecken och var maxvärden hamnar.
 - Singularitet: en topp som växer för varje förfining är en singularitet och rapporteras inte som spänning. Utvärdera med verklig radie, linjariserad spänning eller hot-spot-metod och ange vilken.
 
+## CFD
+
+- Laminärt med `femtools.flow`, turbulent med `femtools.openfoam` (se `CLAUDE.md` för nätning från STEP och efterbehandling).
+- Nätstudie krävs för varje storhet som används i ett beslut (Δp, flödesfördelning, värmeövergång): minst två nät med cellstorlek i kvot minst 1,5, helst tre. Redovisa storheten per nät och ange skillnaden mellan de två finaste som osäkerhet. Utan nätstudie redovisas resultatet som osäkert med en uppskattad marginal och motivering.
+- Spara CFD-nätet (`fluid.msh` och `constant/polyMesh`) per nivå och återanvänd det. gmsh HXT ger inte samma nät mellan körningar: samma h gav Δp +6–7 % i en upprepad körning.
+- Med SIMPLE på tetraedrar som stannar vid residualer 1e-3–1e-2 redovisas storheten som medel och min–max över andra halvan av iterationerna. RANS-modellens fel (k-ω SST cirka ±3–5 % i friktion) läggs till nätosäkerheten.
+
+## Visning och betraktarvy
+
+- Alla vyer visar produkten som en människa ser den när hon står framför produkten i monterat läge: framifrån med uppåt uppåt. En väggmonterad produkt ses från rummet, inte från väggen. En bänk- eller golvstående produkt ses från användarens sida.
+- Framsidan anges i projektbladet som `betraktarvy.fram` (riktning från produkten mot betraktaren) och `betraktarvy.upp`. Är den inte självklar ur ritning eller montage frågar agenten. `projektblad.check` stoppar om den saknas (standardversion 5.0 och senare).
+- Regeln gäller 3D-visaren (startvy "Fram iso"), lastskissen, resultatbilder och snitt i PDF-rapporten, CAD-vyer (skärmbilder och renderingar från Fusion 360 eller SolidWorks) och skisser. Snitt och detaljvyer från andra håll får läggas till och märks med betraktningsriktning ("sedd från väggen", "underifrån").
+- CAD-ritning, även utan beräkning (Fusion 360 via API, SolidWorks, skisser): bestäm framsidan före modellering och fråga om den inte är självklar. Sätt hemvyn (Home/ViewCube i Fusion, vyn Front i SolidWorks) så att produktens framsida är Front och hemvyn är "Fram iso", och ta skärmbilder därifrån. Arbetsgången står i skillen cad-ritning.
+- Interaktiv 3D-visare är standardleverans i varje beräkning, bredvid PDF-rapporten: `femtools.webreport` med nät, alla lastfall (von Mises, huvudspänning, förskjutning med skalfaktor), termik när den ingår och CFD-fält (`Report.flow` med `openfoam.read_case`: |U| i snitt, väggtryck, strömlinjer) när CFD ingår. Samma tabeller som rapporten. Publiceras som artifact, utan datornamn eller Drive-sökvägar.
+- Spara nodala fält till fil i varje körning (t.ex. pickle med p, t, nodvärden per lastfall och temperatur) så att visaren kan byggas utan omkörning.
+
 ## Acceptanskriterier
 
 - Säkerhetsfaktorer enligt projektbladet. Saknas de beräknas inget slutresultat, agenten frågar.
@@ -204,7 +221,7 @@ Detaljerade krav och mall finns i skillen fem-rapport. Kärnreglerna:
 - Lastskiss först (fig. 1): ritad från analyserad geometri med alla laster (storlek, riktning, angreppsyta, lastfall), alla upplag med låsta DOF, symmetriplan, koordinatsystem, mått och reaktionskrafter. Antaganden märks [ANTAGET]. BC-tabell under skissen.
 - Figurerna nedan och i skillen fem-rapport (fig. 1–7) är ett minimum, inte ett tak. Agenten lägger själv till de figurer som behövs för att förstå resultatet eller fatta beslutet, till exempel utnyttjandegrad, huvudspänningsriktningar (lastväg), kontakttryck, modformer, känslighetsstudie eller jämförelse före och efter en ändring. Varje extra figur har samma bildtext som övriga plus en mening om varför den behövs.
 - Figurerna byggs med byggstenarna i `femtools.report` (L2-projektion, snittuttag, enhetlig stil). Ny figurtyp som blir återkommande läggs in där med test.
-- Resultatbilder: deformation (hel modell, förstoringsfaktor angiven), von Mises (skala 0 till Rp0,2, max markerat), detaljvy med nät kring kritisk punkt, minst två snitt (snittplan markerade i översiktsbilden, samma färgskala), konvergensplott. Modform eller bucklingform när relevant.
+- Alla bilder ritas i betraktarvyn (se Visning och betraktarvy). Resultatbilder: deformation (hel modell, förstoringsfaktor angiven), von Mises (skala 0 till Rp0,2, max markerat), detaljvy med nät kring kritisk punkt, minst två snitt (snittplan markerade i översiktsbilden, samma färgskala), konvergensplott. Modform eller bucklingform när relevant.
 - Varje resultatbild har bildtext med siffror: vad som visas, var och hur stort (utnyttjandegrad mot gräns), varför, tillförlitlighet (konvergerat, singularitet) och konsekvens.
 - Skilj VERIFIERAT från ANTAGET.
 - Ange version av denna standard, femtools-version och commit-hash (`femtools.__version__`, `git rev-parse --short HEAD`) och projektbladets innehåll i rapportens början.
@@ -242,6 +259,7 @@ Lärdomar från genomförda beräkningar. Varje post: datum, projekt, lärdom, �
 | 2026-11-26 | Allmänt | OpenFOAM v1912 från apt: functionObject `surfaceFieldValue` kraschar ("IOstream sha1"), `#includeFunc` med argument tolkas inte, scotch saknas (decomposePar method hierarchical fungerar). | Efterbehandla Δp och flöde i Python ur polyMesh och tidskataloger; inga function objects i controlDict. |
 | 2026-11-26 | Allmänt | STEP → OpenFOAM: gmsh-tetraeder med fysiska grupper inlet/outlet/walls, msh 2.2, `gmshToFoam`, `transformPoints -scale 0.001`; väggpatchen blir typ `patch` och måste ändras till `wall` för väggfunktioner. Inloppshastigheten ska räknas mot nätets facetterade area (1,6 % mindre än cirkeln). | Står i CFD-reglerna i `CLAUDE.md`. |
 | 2026-11-26 | Allmänt | Facetterade ytor ger fel resultantkraft om traktion räknas mot teoretisk area (stutsände 179 mot 199 mm², last 180 i stället för 200 N). | Räkna traktion som F / nätets area och kontrollera ΣR per delfall. |
+| 2026-11-27 | Allmänt | Nodala fält sparades inte i fallet; den interaktiva visaren krävde omkörning av FEM och CFD. CFD med samma h gav Δp +6–7 % (icke-identiskt nät). Visaren öppnade från väggsidan, inte framifrån. | Fält sparas i varje körning, CFD-nätstudie och sparat nät, betraktarvy i projektbladet (v5.0). |
 
 ## Revisionsprocess
 

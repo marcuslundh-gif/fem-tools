@@ -32,9 +32,23 @@ def _get(d, dotted):
     return d
 
 
+KRAV_5 = {   # från standard 5.0
+    "betraktarvy.fram": "produktens framsida: riktning från produkten mot betraktaren i monterat läge, t.ex. [0, 1, 0]",
+    "betraktarvy.upp": "uppåt i monterat läge, t.ex. [0, 0, 1]",
+}
+
+
+def _major(pb):
+    try:
+        return int(str(pb.get("standardversion") or "0").split(".")[0])
+    except ValueError:
+        return 0
+
+
 def check(pb):
-    """Lista över saknade obligatoriska fält (tom lista = OK)."""
-    saknas = [f"{k}: {v}" for k, v in KRAV.items() if _get(pb, k) is None]
+    """Lista över saknade obligatoriska fält (tom lista = OK). Betraktarvy krävs från standardversion 5.0."""
+    krav = dict(KRAV, **(KRAV_5 if _major(pb) >= 5 else {}))
+    saknas = [f"{k}: {v}" for k, v in krav.items() if _get(pb, k) is None]
     for i, lf in enumerate(pb.get("lastfall") or []):
         for k in ("namn", "storlek", "riktning", "yta", "kalla"):
             if lf.get(k) in (None, ""):
