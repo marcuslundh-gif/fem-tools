@@ -175,3 +175,73 @@ momentumSource
     yplus = np.sqrt(dpdx * D / 4) * y1 / nu                    # u_tau = sqrt(tau_w/rho) = sqrt(dpdx·D/4)
     return dict(f=f, f_colebrook=colebrook(Re), Re=Re, dpdx=dpdx, iterations=int(it[-1]) if it else None,
                 yplus=yplus, converged="SIMPLE solution converged" in log)
+
+
+# ---------------------------------------------------------------------------- efterbehandling (ascii, tetraedernät)
+def _foam_list(path):
+    """Första listan i en OpenFOAM-fil (polyMesh/points, faces, owner, neighbour) som text efter '('."""
+    import re
+    t = open(path).read()
+    m = re.search(r"^(\d+)\s*\n\(", t, re.M)
+    return int(m.group(1)), t[m.end():]
+
+
+def _internal_field(path, vec):
+    import re
+    t = open(path).read()
+    m = re.search(r"internalField\s+nonuniform\s+List<\w+>\s*(\d+)\s*\(", t)
+    if m is None:
+        u = re.search(r"internalField\s+uniform\s+(\([^)]*\)|[-\deE.+]+)", t).group(1)
+        return None, np.array(u.strip("()").split(), float)
+    k, body = int(m.group(1)), t[m.end():]
+    if vec:
+        a = np.array(re.findall(r"\(([-\deE.+]+) ([-\deE.+]+) ([-\deE.+]+)\)", body)[:k], float)
+    else:
+        a = np.array(body[:body.index(")")].split()[:k], float)
+    return k, a
+
+
+def read_case(case, time=None, rho=1.0, scale=1000.0, wall="walls"):
+    """Läs ett OpenFOAM-fall med rena tetraedrar (gmshToFoam) och writeFormat ascii för visning och efterbehandling.
+
+    Returnerar dict med P (punkter × scale, standard mm), tet (ncell, 4), Uc och pc (cellvärden, p × rho = Pa för
+    simpleFoam), U och p (nodvärden = medel av anslutande celler; U = 0 i väggnoder, noSlip), patches
+    {namn: (nf, 3) trianglar} och time. Används av webreport.Report.flow."""
+    import re
+    pm = os.path.join(case, "constant", "polyMesh")
+    n, b = _foam_list(os.path.join(pm, "points"))
+    P = np.array(re.findall(r"\(([-\deE.+]+) ([-\deE.+]+) ([-\deE.+]+)\)", b)[:n], float) * scale
+    n, b = _foam_list(os.path.join(pm, "faces"))
+    F = [list(map(int, f.split())) for f in re.findall(r"\d+\(([\d ]+)\)", b)[:n]]
+    if any(len(f) != 3 for f in F):
+        raise ValueError("read_case kräver rena tetraedernät (alla ytor trianglar)")
+    F = np.array(F)
+    n, b = _foam_list(os.path.join(pm, "owner")); own = np.array(b[:b.index(")")].split()[:n], int)
+    n, b = _foam_list(os.path.join(pm, "neighbour")); nei = np.array(b[:b.index(")")].split()[:n], int)
+    bnd = open(os.path.join(pm, "boundary")).read()
+    patches = {}
+    for name, blk in re.findall(r"(\w+)\s*\{([^}]*)\}", bnd[bnd.index("(") + 1:]):
+        nf = re.search(r"nFaces\s+(\d+)", blk); sf = re.search(r"startFace\s+(\d+)", blk)
+        if nf and sf:
+            s0 = int(sf.group(1)); patches[name] = F[s0:s0 + int(nf.group(1))]
+    if time is None:
+        ts = [d for d in os.listdir(case) if re.fullmatch(r"[\d.eE+-]+", d) and float(d) > 0
+              and os.path.exists(os.path.join(case, d, "U"))]
+        time = max(ts, key=float)
+    _, Uc = _internal_field(os.path.join(case, str(time), "U"), True)
+    _, pc = _internal_field(os.path.join(case, str(time), "p"), False)
+    ncell = len(Uc)
+    cells = np.concatenate([own, nei]); fp = np.concatenate([F, F[:len(nei)]])
+    pairs = np.unique(np.column_stack([np.repeat(cells, 3), fp.ravel()]), axis=0)
+    if len(pairs) != 4 * ncell:
+        raise ValueError("read_case: cellerna är inte tetraedrar")
+    tet = pairs[:, 1].reshape(ncell, 4)
+    cnt = np.maximum(np.bincount(tet.ravel(), minlength=len(P)), 1)
+    U = np.column_stack([np.bincount(tet.ravel(), weights=np.repeat(Uc[:, k], 4), minlength=len(P)) / cnt for k in range(3)])
+    pc = pc * rho
+    p = np.bincount(tet.ravel(), weights=np.repeat(pc, 4), minlength=len(P)) / cnt
+    if wall in patches:                               # noSlip i väggnoder, utom kanten mot andra patchar
+        other = [v for k, v in patches.items() if k != wall]
+        keep = np.unique(np.concatenate([o.ravel() for o in other])) if other else np.array([], int)
+        U[np.setdiff1d(np.unique(patches[wall]), keep)] = 0.0
+    return dict(P=P, tet=tet, Uc=Uc, pc=pc, U=U, p=p, patches=patches, time=str(time))

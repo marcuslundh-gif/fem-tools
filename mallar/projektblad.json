@@ -1,8 +1,9 @@
 {
   "_info": "Mall för projektblad. Kopiera till <fallmapp>/inputs.json. null = ej ifyllt; femtools.projektblad.load() stoppar då. Lägg aldrig ifyllda projektblad i repot.",
   "case": null,
-  "standardversion": "4.0",
+  "standardversion": "5.0",
   "geometri": {"step": null, "enhet_kontrollerad": false, "forenklingar": []},
+  "betraktarvy": {"fram": null, "upp": [0, 0, 1], "beskrivning": null, "_info": "fram = riktning från produkten mot en människa som står framför den i monterat läge (väggmonterad: bort från väggen). Styr startvyn i webreport, lastskiss, resultatbilder, CAD-vyer och skisser."},
   "material": null,
   "tjocklek_mm": null,
   "riktning_print": null,

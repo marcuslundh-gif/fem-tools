@@ -273,6 +273,50 @@ def webreport_test():
     assert "<title>Test</title>" in html and "three@0.128.0" in html and json.dumps(d["title"]) in html
 
 
+def webreport_flow_test():
+    """webreport.flow + openfoam.read_case: syntetiskt OpenFOAM-fall (box 2×1×1 tetraedrar, U = (1, 0, 0), p = x).
+    Snittet y = 0,5 ska ha arean 2,0 och p/|U| exakt interpolerat; strömlinjen ska gå rakt från x 0 till 2."""
+    import tempfile, os
+    m = MeshTet.init_tensor(np.linspace(0, 2, 9), np.linspace(0, 1, 5), np.linspace(0, 1, 5))
+    P, tet = m.p.T, m.t.T
+    fc = np.sort(np.vstack([tet[:, [0, 1, 2]], tet[:, [0, 1, 3]], tet[:, [0, 2, 3]], tet[:, [1, 2, 3]]]), axis=1)
+    cell = np.tile(np.arange(len(tet)), 4)
+    uq, inv, cnt = np.unique(fc, axis=0, return_inverse=True, return_counts=True)
+    inv = inv.ravel()
+    own, nei = {}, {}
+    for f, c in zip(inv, cell):
+        (nei if f in own else own)[f] = c if f not in own else c
+    order = [f for f in range(len(uq)) if cnt[f] == 2] + [f for f in range(len(uq)) if cnt[f] == 1]
+    nint = int((cnt == 2).sum())
+    lst = lambda xs: f"{len(xs)}\n(\n" + "\n".join(xs) + "\n)\n"
+    with tempfile.TemporaryDirectory() as td:
+        pm = os.path.join(td, "constant", "polyMesh"); os.makedirs(pm); os.makedirs(os.path.join(td, "1"))
+        w = lambda p, t: open(os.path.join(td, p), "w").write("FoamFile{}\n" + t)
+        w("constant/polyMesh/points", lst([f"({x / 1000} {y / 1000} {z / 1000})" for x, y, z in P]))
+        w("constant/polyMesh/faces", lst(["3(%d %d %d)" % tuple(uq[f]) for f in order]))
+        w("constant/polyMesh/owner", lst([str(own[f]) for f in order]))
+        w("constant/polyMesh/neighbour", lst([str(nei[f]) for f in order[:nint]]))
+        w("constant/polyMesh/boundary", f"1\n(\nwalls\n{{\n type wall;\n nFaces {len(uq) - nint};\n startFace {nint};\n}}\n)\n")
+        cen = P[tet].mean(1)
+        w("1/U", f"internalField nonuniform List<vector> {len(tet)}\n(\n" + "\n".join("(1 0 0)" for _ in tet) + "\n)\n;")
+        w("1/p", f"internalField nonuniform List<scalar> {len(tet)}\n(\n" + "\n".join(f"{x:.9g}" for x in cen[:, 0]) + "\n)\n;")
+        f = openfoam.read_case(td, rho=2.0, wall="ingen")
+    vol = np.abs(np.linalg.det(f["P"][f["tet"]][:, 1:] - f["P"][f["tet"]][:, :1])).sum() / 6
+    assert np.allclose(f["P"], P) and abs(vol - 2.0) < 1e-9 and np.allclose(f["pc"], 2 * cen[:, 0])
+    pts, tri, val = webreport.slice_tets(P, tet, P[:, 0], "y", 0.5)
+    area = 0.5 * np.linalg.norm(np.cross(pts[tri[:, 1]] - pts[tri[:, 0]], pts[tri[:, 2]] - pts[tri[:, 0]]), axis=1).sum()
+    L = webreport.streamlines(P, tet, f["U"], [[0.01, 0.37, 0.61]], ds=0.05)[0][0]
+    w_ = webreport.Report("Flöde", front=(0, 1, 0)).mesh(m)
+    w_.flow("test", f, slices={"y": 0.5, "z": 0.25}, seeds=[[0.01, 0.37, 0.61]], wall="walls")
+    d = w_.data()["flows"][0]
+    print(f"Flöde i webbrapport: snittarea {area:.6f} (2), x-fel {np.abs(val - pts[:, 0]).max():.1e}, "
+          f"strömlinje x {L[0, 0]:.2f}→{L[-1, 0]:.3f}, avdrift {np.abs(L[L[:, 0] < 1.9, 1:] - [0.37, 0.61]).max():.1e}")
+    assert abs(area - 2.0) < 1e-9 and np.abs(val - pts[:, 0]).max() < 1e-12
+    inner = L[:, 0] < 1.9                     # vid utloppet knuffas linjen (randbeteende, se streamlines)
+    assert L[-1, 0] > 1.9 and np.abs(L[inner, 1:] - [0.37, 0.61]).max() < 1e-9
+    assert len(d["slices"]) == 2 and d["wall"] is not None and len(d["stream"]) == 1 and w_.front == [0.0, 1.0, 0.0]
+
+
 def data():
     """materials.json komplett och tjockleksuppslag rätt; projektbladsmallen ska stoppas."""
     import json, pathlib
@@ -284,7 +328,8 @@ def data():
     assert material("PA12 SLS (EOS PA 2200)")["Rm"] == 42                     # Z-riktning default
     mall = pathlib.Path(__file__).resolve().parent.parent / "mallar" / "projektblad.json"
     if mall.exists():                                                          # finns i repo, ej i pip-installation
-        assert len(projektblad.check(json.loads(mall.read_text(encoding="utf-8")))) >= 5
+        saknas = projektblad.check(json.loads(mall.read_text(encoding="utf-8")))
+        assert len(saknas) >= 5 and any(k.startswith("betraktarvy.fram") for k in saknas)
     print(f"Data: {len(materials())} material OK, projektbladskontroll OK")
 
 
@@ -298,5 +343,6 @@ if __name__ == "__main__":
     cfd_test()
     openfoam_test()
     webreport_test()
+    webreport_flow_test()
     data()
     print(f"femtools verifierad OK ({time.perf_counter() - t0:.1f} s)")
