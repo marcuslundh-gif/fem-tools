@@ -44,5 +44,16 @@
      "kalla": "Tibnor Rostfria konstruktionsrör (EN 10219/10296-2), Rp0,2 och Rm; rho 7,9 kg/dm3 och alpha 16,0e-6 (20-100 °C) kontrollerade mot Outokumpu tab. 13 och DEW-datablad",
      "k": 15, "c": 500, "Rp02_T": {"100": 157, "200": 127},
      "kalla_T": "Outokumpu Steel grades, properties and global standards, tab. 9 (EN min Rp0,2 vid 100/200 °C, EN 10028-7) och tab. 13 (λ 15 W/(m·K), c_p 500 J/(kg·K) vid RT); DEW/Swiss Steel datablad 1.4301 (λ 15, c 500, α20-100 16,0e-6)"}
+  ],
+  "AA3104-H19 burkkropp": [
+    {"t_min": 0, "t_max": 0.5, "E": 69000, "nu": 0.33, "Rp02": 293, "Rm": 328, "A_pct": 6.1, "rho": 2.72e-9, "alpha": 2.3e-5, "typ": "TYPVARDE",
+     "kalla": "Wędrychowicz, Kustra, Milenin, Materials 16(19) 6603, 2023: dragprov på burkmaterial, medel Rp0,2 293 ± 1,1, Rm 328 ± 1,9 MPa, A 6,1 %; E 69 GPa, nu 0,33 (deras FE-indata)",
+     "kontroll": "Steelforce Packaging datablad aluminium (3000-serien burkband, 3104-H19): Rp 260-295, Rm 285-320 MPa, A min 2 %; Signi Aluminium: E 69 GPa, rho 2,72 g/cm3. Lackad och bakad vägg; minimivärde enligt leverantör 260 MPa",
+     "antaget": ["alpha"]}
+  ],
+  "AA5182-H48 burklock": [
+    {"t_min": 0, "t_max": 0.5, "E": 70000, "nu": 0.33, "Rp02": 329, "Rm": 370, "rho": 2.65e-9, "alpha": 2.4e-5, "typ": "MINIMI",
+     "kalla": "Steelforce Packaging datablad aluminium, 5000-serien (5182-H19/H48): Rp 329-392, Rm 370-431 MPa, A min 5 %; tabellen skiljer inte tydligt på H19 och H48",
+     "antaget": ["E", "nu", "rho", "alpha"]}
   ]
 }

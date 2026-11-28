@@ -1,6 +1,6 @@
 # Projektstandard för FEM-beräkningar
 
-Version 5.0, 2026-11-27. Ägare: Marcus Lundh.
+Version 5.1, 2026-11-27. Ägare: Marcus Lundh.
 
 Master: denna fil i GitHub-repot `fem-tools` (`docs/projektstandard.md`). Kopia i Google Drive-mappen "Projektstandard för FEM-beräkningar" synkas efter varje godkänd ändring.
 
@@ -18,6 +18,7 @@ Master: denna fil i GitHub-repot `fem-tools` (`docs/projektstandard.md`). Kopia 
 | 4.2 | 2026-11-26 | femtools 1.3.0: `static_ext` (tryck, egenvikt, rotation, termisk last, randvillkor per komponent) `heat`/`heat_transient` (värmeledning med fast temperatur, flöde, konvektion, värmekälla) `buckling` (linjär knäckning, geometrisk styvhet från förspänningen), `flow` (laminär Stokes/Navier-Stokes, Taylor-Hood) `openfoam` (turbulent CFD med OpenFOAM, k-ω SST) och `webreport` (interaktiv HTML-rapport som komplement till PDF). Verifierade mot Lamé, roterande rör, hängande stång, rör med konvektion, Timoshenkos termiska rörspänning, inspänd stång, transient platta, Euler-pelare fall 1 och 3, Kovasznay, Hagen-Poiseuille och turbulent rör mot Colebrook; se `docs/verifiering.md`. Bygger på 4.1 (PR #2). |
 | 4.3 | 2026-11-26 | Erfarenheter från ett fall med STEP från Fusion 360, termik, superponerade lastfall och CFD i OpenFOAM: STEP-enhet, gmsh-fel på periodiska ytor, STEP → OpenFOAM-nät, efterbehandling utan surfaceFieldValue, minnestak och konvergens med liten nätkvot, AMG-prestanda. 1.4301 rör med temperaturberoende Rp0,2, λ och c_p i `materials.json`. Bygger på 4.2 (PR #3). |
 | 5.0 | 2026-11-27 | Nya regler: betraktarvy framifrån för alla vyer (3D-visare, lastskiss, resultatbilder, CAD-vyer och skisser) med framsidan i projektbladet (`betraktarvy`, krävs av `projektblad.check` från 5.0); interaktiv 3D-visare (`femtools.webreport`) är standardleverans i varje beräkning, med CFD-fält när CFD ingår; CFD kräver nätstudie med minst två nät och sparat nät. femtools 1.4.0: `webreport` med betraktarvy, snittplan och CFD-lager (`flow`, `slice_tets`, `streamlines`), `openfoam.read_case`. |
+| 5.1 | 2026-11-27 | femtools 1.5.0: `shell` (tunnväggiga rotationsskal i CalculiX, S8R, icke-linjär kollaps med NLGEOM och plasticitet, Koiter-imperfektion), `webreport.surface` (skalytor), typvärden för metaller i `material()`. Nya material: AA3104-H19 och AA5182-H48 (burkplåt). CalculiX med MKL Pardiso (`tools/build_ccx_pardiso.sh`). Erfarenheter från knäckning av tunt skal: `*BUCKLE` med S8R ger falska moder, falsens hårnål kräver grovt nät, SPOOLES långsam. Tillägg 2026-11-28: strukturerat nät med S8R och krav på fallande gren för skalkollaps, `orient()` för normalernas riktning, reaktion i alla upplag för olinjära körningar, ingen Richardson när kollapsformen byter plats. |
 
 ## Användning
 
@@ -94,6 +95,16 @@ TYPVÄRDE: leverantörens medelvärden, inte minimivärden. Rapporten ska ange a
 
 Kontroll mot andra tillverkare (2026-11-19): Materialise PA12 SLS 1 650 MPa / 48 MPa, 3D Systems DuraForm ProX PA 1 770 / 47 MPa, Materialise PA-GF 3 200 / 51 MPa, Materialise PA-AF 3 800 / 48 MPa. α för Alumide uppskattad med blandningsregel (cirka 27 vol-% Al) och måste ligga mellan aluminium (2,3e-5) och PA12 (1,1e-4); 3D Systems DuraForm ProX AF+ anger 1,45e-4 för 0–145 °C. Termiska analyser med Alumide kräver mätt värde eller känslighetsstudie.
 
+
+### Typvärden (metaller)
+
+TYPVÄRDE även för metall när bara uppmätta värden finns (t.ex. tunn burkplåt utan EN-minimivärde i tjockleken). `material()` returnerar `typ` = TYPVARDE; rapporten anger det och kollapslasten redovisas med spridning från känslighetsstudie.
+
+| Material | Källa | t [mm] | E [MPa] | ν [-] | Rp0,2 [MPa] | Rm [MPa] | ρ [ton/mm³] |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| AA3104-H19 (burkkropp) | Wędrychowicz m.fl. 2023 (dragprov, typvärde); Steelforce/Signi | 0–0,5 | 69 000 | 0,33 | 293 | 328 | 2,72e-9 |
+| AA5182-H48 (burklock) | Steelforce (minimivärden), E/ν/ρ ANTAGET | 0–0,5 | 70 000 | 0,33 | 329 | 370 | 2,65e-9 |
+
 ## Randvillkor
 
 - Undvik helt stumma inspänningar (alla 6 DOF låsta) om det inte motsvarar en faktisk fastsvetsning i mycket styv struktur.
@@ -169,6 +180,7 @@ Effektivitet:
 - Minnet växer ungefär 25 GB per miljon DOF. Med 70 %-regeln ger det ett tak kring 400 000 DOF i molnet. Kompakta detaljer ger mer fill-in än en slank balk och därmed lägre tak: mät alltid de två grövsta näten. Större modeller körs lokalt.
 - Assembleringen tar mer tid än lösningen. Kör därför flera lastfall på samma assemblerade matris i stället för att anropa `static` en gång per lastfall.
 - Den tidigare claude.ai-containern (2 kärnor, 7 GB) klarade cirka 300 000 DOF.
+- CalculiX (skal, icke-linjärt): apt-versionen använder SPOOLES. Bygg `ccx_pardiso` med `tools/build_ccx_pardiso.sh` (MKL Pardiso, 2,3 gånger snabbare på samma modell). `femtools.shell.ccx_exe()` väljer den när den finns.
 - Kompakt svetsad detalj (rör, flänsar, konsoler, 5 superponerade lastfall med spänningar sparade): 206 000 DOF 7,9 GB, 265 000 DOF 8,0 GB, 382 000 DOF 11,4 GB, 90–210 s per nät.
 - pyamg (smoothed aggregation med stelkroppsmoder, CG, tol 1e-10) löste 265 000 DOF på 374 s per lastfall mot 20 s med pypardiso: 15–30 gånger långsammare. Bara för ett fåtal lastfall när pypardiso inte ryms i minnet; verifiera mot pypardiso på ett grövre nät.
 
@@ -177,6 +189,7 @@ Effektivitet:
 Obligatoriskt för varje beräkningsfall:
 
 - Jämvikt: summan av reaktionskrafter plus pålagda laster ska vara under 0,1 % av pålagd last, per komponent.
+- Förskjutningsstyrda och olinjära körningar: skriv ut reaktionen i alla upplag i varje körning (CalculiX `*NODE PRINT,NSET=...,TOTALS=ONLY` per upplag), så att jämvikten kan kontrolleras utan omkörning.
 - Nätkonvergens: minst 3 nät. Godkänt när utvärderingsstorheten ändras mindre än 3 % mellan de två finaste. Redovisa tabell och Richardson-extrapolerat värde.
 - Handräkning eller analytisk lösning för storleksordning, i ett eget skript. FEM och handräkning ska stämma inom cirka 10 % i en jämförbar punkt, annars förklaras skillnaden.
 - Rimlighet: deformationsform (skalad plott), tecken och var maxvärden hamnar.
@@ -211,6 +224,7 @@ Obligatoriskt för varje beräkningsfall:
 - Utmattning, svetsar: nominell spänning eller hot-spot-spänningsvidd mot FAT-klass enligt EN 1993-1-9, EN 1999-1-3 eller IIW. Variabel amplitud med Palmgren-Miner. Ange FAT-klass och källa.
 - Egenfrekvens: modalanalys med verkliga randvillkor och tillsatta massor. Marginal mot drivfrekvenser och deras övertoner anges i projektbladet. Riktvärde om inget anges: minst 20 % (gäller även skillen fem-berakning).
 - Knäckning: linjär buckling-analys ger lastfaktor. Tunnväggiga eller imperfektionskänsliga konstruktioner kräver icke-linjär analys eller standardens reduktionskurvor.
+- Tunna skal (R/t över cirka 100): icke-linjär kollaps med `femtools.shell` (NLGEOM, plasticitet, förskjutningsstyrd last), kollapslast = högsta kraft före första fallande gren. Imperfektion som Koiter-form med halvvåglängden l = π√(Rt)/(12(1−ν²))^¼ och amplitud ξ·t i ett svep (minst ξ 0; 0,1; 0,25; 0,5), med en svag omkretsstörning så att symmetrin bryts. Redovisa jämförelse mot NASA SP-8007 (knockdown γ). Linjär `*BUCKLE` i CalculiX används inte för S8R (falska moder). Nät: strukturerat (meridian × omkrets, `revolve_shell(structured=True)`) med S8R och nätstudie på hela modellen; inte ostrukturerat nät med lokala förfiningszoner. Kollapslasten godtas bara när kraftkurvan har en fallande gren efter toppen (`peak_last` falskt) och vågmönstret inte följer nätet. Byter kollapsformen plats mellan näten (till exempel hals → vägg) används inte Richardson: redovisa ändringen mellan de två finaste och formen per nät. Gränslast där lösaren stannar vid toppen (snäppknäckning) godtas när sista inkrementet är under 0,1 % av förskjutningen och dF/dδ ≈ 0. Projektbladet anger imperfektionsformen; för rotationsskal Koiter axisymmetrisk, inte affin mot linjär knäckform.
 
 ## Rapport och spårbarhet
 
@@ -260,6 +274,12 @@ Lärdomar från genomförda beräkningar. Varje post: datum, projekt, lärdom, �
 | 2026-11-26 | Allmänt | STEP → OpenFOAM: gmsh-tetraeder med fysiska grupper inlet/outlet/walls, msh 2.2, `gmshToFoam`, `transformPoints -scale 0.001`; väggpatchen blir typ `patch` och måste ändras till `wall` för väggfunktioner. Inloppshastigheten ska räknas mot nätets facetterade area (1,6 % mindre än cirkeln). | Står i CFD-reglerna i `CLAUDE.md`. |
 | 2026-11-26 | Allmänt | Facetterade ytor ger fel resultantkraft om traktion räknas mot teoretisk area (stutsände 179 mot 199 mm², last 180 i stället för 200 N). | Räkna traktion som F / nätets area och kontrollera ΣR per delfall. |
 | 2026-11-27 | Allmänt | Nodala fält sparades inte i fallet; den interaktiva visaren krävde omkörning av FEM och CFD. CFD med samma h gav Δp +6–7 % (icke-identiskt nät). Visaren öppnade från väggsidan, inte framifrån. | Fält sparas i varje körning, CFD-nätstudie och sparat nät, betraktarvy i projektbladet (v5.0). |
+| 2026-11-27 | Tunnväggigt rotationsskal (dryckesburk) | CalculiX `*BUCKLE` med S8R gav brusformade moder under den klassiska knäcklasten, även med konsistenta randlaster, strukturerat nät och S8. Icke-linjär kollaps på perfekt cylinder gav 2 616 N mot klassiska 2 652 N och Koiter ξ 0,1 +3,3 %. | Kollapslast med icke-linjär analys; `*BUCKLE` för S8R används inte (Knäckning). |
+| 2026-11-28 | Tunnväggigt rotationsskal | S8R på ostrukturerat nät med lokal förfining i en hals gav falsk kollaps: lasten sjönk med förfiningen (942 → 684 N), vågantalet följde nätet (37 → 70) och kurvan saknade fallande gren. S8 på samma nät gav "nonpositive jacobian" eller låsning (cylinder +14 % vid h = l/3). Strukturerat nät med S8R gav riktig kollaps som konvergerar (1 599 / 1 389 / 1 300 N vid h 2,25 / 1,5 / 1,0). | Knäckning: strukturerat nät, S8R, krav på fallande gren. `write_inp(quad_type=)`, `orient()` kontrollerar normalernas riktning. |
+| 2026-11-27 | Tunnväggigt rotationsskal | Lokal nätförfining som omfattade en hårnålsvikt (två skalytor med motriktade normaler, falsen) stoppade CalculiX direkt: "gen3dnor: size of estimated shell normal ... smaller than 1.e-10". | Förfiningszoner slutar före hårnålar och tätt vikta detaljer; där behåller nätet grundstorleken. |
+| 2026-11-27 | Tunnväggigt rotationsskal | CalculiX frd innehöll bara expanderade 3D-noder för skal. | `*NODE FILE, OUTPUT=2D` ger mittytans noder; `femtools.shell.collapse_step` gör det. |
+| 2026-11-27 | Allmänt | CalculiX från apt (SPOOLES) tog 2,3 gånger längre tid än samma version byggd med MKL Pardiso. | `tools/build_ccx_pardiso.sh` och `ccx_exe()` (Lösare och prestanda). |
+| 2026-11-27 | Allmänt | `material()` hanterade inte typvärden för metaller med tjockleksintervall. | femtools 1.5.0: tjockleksuppslag även för TYPVARDE-metaller. |
 
 ## Revisionsprocess
 

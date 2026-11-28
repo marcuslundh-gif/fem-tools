@@ -19,12 +19,12 @@ def materials():
 
 def material(name, t=None, riktning="z"):
     """Returnerar dict med E, nu, rho, alpha, typ, kalla (+ Rp02/Rm eller Rm för polymerer).
-    Metaller kräver tjocklek t [mm]. Polymerer: riktning 'xy' eller 'z' (default z = konservativt)."""
+    Metaller (rader med t_min/t_max, även TYPVARDE) kräver tjocklek t [mm]. Polymerer: riktning 'xy' eller 'z' (default z = konservativt)."""
     db = materials()
     if name not in db:
         raise KeyError(f"Material '{name}' saknas i materials.json. Finns: {', '.join(db)}. Fråga, gissa inte.")
     rows = db[name]
-    if rows[0]["typ"] == "MINIMI":
+    if "t_min" in rows[0]:                       # metall (MINIMI eller TYPVARDE): tjockleksuppslag
         if t is None:
             raise ValueError(f"{name}: tjocklek t [mm] krävs (värdena är tjockleksberoende).")
         for r in rows:
