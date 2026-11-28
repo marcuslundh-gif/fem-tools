@@ -191,6 +191,25 @@ class Report:
                                 at=self._surf["p"][imax].round(3).tolist()))
         return self
 
+    def transient(self, case, name, t, frames, unit, curves=None, t_unit="min", t_div=60.0, digits=3,
+                  limit=None, limit_label=None, curve_unit=None, curve_title=None):
+        """Transient nodalt fält med tidsreglage: frames är en lista med nodvärden (en per sparad tid t [s],
+        samma längd som nätets noder). Färgskalan är fast över alla tider. curves {namn: (t [s], y)} ritas
+        som kurvdiagram under 3D-vyn med en markör vid vald tid (t.ex. svalningskurva). t visas som t/t_div i t_unit."""
+        if self._surf is None:
+            raise RuntimeError("Anropa mesh(m) före transient().")
+        idx = self._surf["nodes"]
+        F = np.asarray([np.asarray(v, float)[idx] for v in frames])
+        c = self.cases.setdefault(case, dict(name=case, u=None, fields=[]))
+        imax = np.unravel_index(int(np.argmax(F)), F.shape)
+        c["fields"].append(dict(name=name, unit=unit, values=_sig(F[0], digits), limit=limit, limit_label=limit_label,
+                                min=float(F.min()), max=float(F.max()), at=self._surf["p"][imax[1]].round(3).tolist(),
+                                frames=[_sig(f, digits) for f in F], t=(np.asarray(t, float) / t_div).round(4).tolist(),
+                                t_unit=t_unit, curve_unit=curve_unit or unit, curve_title=curve_title,
+                                curves=[dict(name=k, t=(np.asarray(v[0], float) / t_div).round(4).tolist(),
+                                             y=_sig(v[1], 4)) for k, v in (curves or {}).items()]))
+        return self
+
     def flow(self, case, f, slices=None, seeds=None, ds=None, wall="walls", unitU="m/s", unitp="Pa", digits=4):
         """CFD-fält som eget fall: f från openfoam.read_case (P, tet, U, p, patches) eller en dict med samma nycklar.
         slices {"y": 0.0, ...}: plana snitt med |U|. seeds (k, 3): startpunkter för strömlinjer (t.ex. på inloppet).
@@ -295,8 +314,9 @@ h1{font:600 clamp(26px,4vw,38px)/1.1 var(--display);margin:0;text-wrap:balance}
 .sub{color:var(--muted);margin:0;max-width:65ch}
 dl.meta{display:flex;flex-wrap:wrap;gap:6px 22px;margin:4px 0 0;font:13px/1.4 var(--mono)}
 dl.meta div{display:flex;gap:6px} dl.meta dt{color:var(--muted)} dl.meta dd{margin:0}
-.viewer{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:0;background:var(--paper);border:1px solid var(--rule)}
-@media (max-width:820px){.viewer{grid-template-columns:minmax(0,1fr)}}
+.viewer{display:grid;grid-template-columns:minmax(0,1fr) 260px;grid-template-areas:"stage ctl" "tl ctl";gap:0;background:var(--paper);border:1px solid var(--rule)}
+@media (max-width:820px){.viewer{grid-template-columns:minmax(0,1fr);grid-template-areas:"stage" "tl" "ctl"}}
+.stage{grid-area:stage} .controls{grid-area:ctl} .tl{grid-area:tl}
 .stage{position:relative;min-width:0;aspect-ratio:16/10;max-width:100%;background:var(--canvas)}
 .stage canvas{display:block;width:100%;height:100%;touch-action:none}
 .legend{position:absolute;right:12px;top:34px;bottom:12px;display:flex;gap:8px;align-items:stretch;pointer-events:none;
@@ -309,7 +329,7 @@ dl.meta div{display:flex;gap:6px} dl.meta dt{color:var(--muted)} dl.meta dd{marg
 .legend .unit{position:absolute;top:-14px;left:-22px;transform:translateY(-100%);color:var(--muted);white-space:nowrap}
 .readout{position:absolute;left:12px;bottom:12px;font:12px/1.4 var(--mono);color:var(--muted);pointer-events:none;max-width:60%}
 .readout b{color:var(--ink);font-weight:500}
-.controls{border-left:1px solid var(--rule);padding:16px;display:grid;gap:14px;align-content:start;min-width:0}
+.controls{border-left:1px solid var(--rule);padding:16px;display:grid;gap:14px;align-content:start;min-width:0;align-self:stretch}
 @media (max-width:820px){.controls{border-left:0;border-top:1px solid var(--rule);grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}}
 .controls label{display:grid;gap:5px;font:500 12px/1.2 var(--body);letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
 select,input[type=range]{width:100%;font:14px var(--body);color:var(--ink)}
@@ -335,6 +355,10 @@ tr:last-child td{border-bottom:0}
 @media print{.controls,.caption button{display:none}.viewer{grid-template-columns:1fr}body{background:#fff}}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
 [hidden]{display:none!important}
+.tl{border-top:1px solid var(--rule);padding:12px 16px;display:grid;gap:8px;min-width:0;align-self:start}
+.tl .row{align-items:center;flex-wrap:nowrap} .tl input[type=range]{flex:1;min-width:80px} .tl .scaleval{white-space:nowrap}
+.tl svg{width:100%;height:auto;display:block;font:12px var(--mono)}
+.tl .ax{stroke:var(--rule)} .tl .lab{fill:var(--muted)} .tl .cur{stroke:var(--warn);stroke-width:1.5}
 </style>
 <script src="__THREE__"></script>
 <script src="__ORBIT__"></script>
@@ -365,6 +389,11 @@ tr:last-child td{border-bottom:0}
         <button type="button" data-view="iso" class="primary">Fram iso</button><button type="button" data-view="front">Fram</button>
         <button type="button" data-view="top">Topp</button><button type="button" data-view="side">Sida</button><button type="button" data-view="back">Bak</button>
       </div>
+    </div>
+    <div class="tl" id="tl" hidden>
+      <div class="row"><button type="button" id="play">▶ Spela</button>
+        <input type="range" id="tsl" min="0" max="0" value="0" aria-label="Tid"><span class="scaleval" id="tval"></span></div>
+      <svg id="chart" viewBox="0 0 900 250" role="img" aria-label="Kurvor över tiden"></svg>
     </div>
   </div>
   <div id="blocks" class="wrap" style="gap:28px;margin:0;justify-items:start"></div>
@@ -473,7 +502,7 @@ else (function(){
     const j=[...sf.options].findIndex(o=>o.text===prev); if(j>=0) sf.selectedIndex=j; }
   function autoScale(c){ if(!c.u) return 0; let um=0; for(let i=0;i<c.u.length;i+=3) um=Math.max(um,Math.hypot(c.u[i],c.u[i+1],c.u[i+2]));
     return um>0? 0.08*2*R/um : 0; }
-  function themeColors(){ renderer.setClearColor(new THREE.Color(css("--canvas")||"#eef1f4"));
+  function themeColors(){ if(!$("tl").hidden) update(); renderer.setClearColor(new THREE.Color(css("--canvas")||"#eef1f4"));
     wire.material.color.set(css("--mesh")||"#20303f"); marker.material.color.set(css("--ink")||"#16202a"); }
   function paint(g,vals,lo,hi){ const c=g.attributes.color.array; for(let i=0;i<vals.length;i++) c.set(turbo((vals[i]-lo)/(hi-lo)),3*i); g.attributes.color.needsUpdate=true; }
   function legend(lo,hi,unit,limit,label){
@@ -490,6 +519,30 @@ else (function(){
     // standardsida: behåll halvan bort från betraktaren så att snittet syns framifrån
     if (Math.abs([F.x,F.y,F.z][a])>0.5 && [F.x,F.y,F.z][a]<0) n[a]=-n[a];
     clipP.normal.set(...n); clipP.constant=-n[a]*v+1e-3*(hi-lo); $("clipv").textContent="xyz"[a]+" = "+fmt(v,4); }
+  const tsl=$("tsl"); let playT=null;
+  const PAL=["--accent","--warn","--ink","--muted"];
+  function chart(f,ti){ const svg=$("chart"); if(!f.curves||!f.curves.length){ svg.innerHTML=""; svg.style.display="none"; return; }
+    svg.style.display=""; const nar=(svg.clientWidth||900)<600, W=nar?Math.max(300,svg.clientWidth):900, H=nar?230:250, l=nar?40:58, r=nar?12:150, tp=nar?48:30, b=34;
+    svg.setAttribute("viewBox",`0 0 ${W} ${H}`); let t0=Infinity,t1=-Infinity,y0=Infinity,y1=-Infinity;
+    f.curves.forEach(c=>{c.t.forEach(v=>{t0=Math.min(t0,v);t1=Math.max(t1,v);}); c.y.forEach(v=>{y0=Math.min(y0,v);y1=Math.max(y1,v);});});
+    const pad=(y1-y0)*0.05||1; y0-=pad; y1+=pad; const X=v=>l+(W-l-r)*(v-t0)/((t1-t0)||1), Y=v=>H-b-(H-tp-b)*(v-y0)/((y1-y0)||1);
+    let g=""; for(let k=0;k<=5;k++){ const yv=y0+(y1-y0)*k/5, tv=t0+(t1-t0)*k/5;
+      g+=`<line class="ax" x1="${l}" x2="${W-r}" y1="${Y(yv)}" y2="${Y(yv)}"/><text class="lab" x="${l-6}" y="${Y(yv)+4}" text-anchor="end">${fmt(yv,3)}</text>`;
+      g+=`<text class="lab" x="${X(tv)}" y="${H-b+16}" text-anchor="middle">${fmt(tv,3)}</text>`; }
+    g+=`<text class="lab" x="${(l+W-r)/2}" y="${H-4}" text-anchor="middle">tid [${f.t_unit}]</text><text class="lab" x="4" y="${tp-14}">${f.curve_title?f.curve_title+" ":""}[${f.curve_unit}]</text>`;
+    const tc=f.t[ti];
+    f.curves.forEach((c,i)=>{ const col=css(PAL[i%PAL.length]); let d=""; c.t.forEach((v,j)=>{ d+=(j?"L":"M")+X(v).toFixed(1)+","+Y(c.y[j]).toFixed(1); });
+      let j=0; while(j<c.t.length-1 && c.t[j]<tc) j++; const yc=c.y[j];
+      g+=`<path d="${d}" fill="none" stroke="${col}" stroke-width="2"/><circle cx="${X(c.t[j])}" cy="${Y(yc)}" r="4" fill="${col}"/>`;
+      g+= nar? `<text x="${4+i*Math.floor((W-8)/f.curves.length)}" y="14" fill="${col}">${c.name}: ${fmt(yc,3)}</text>`
+             : `<text x="${W-r+8}" y="${tp+14+18*i}" fill="${col}">${c.name}: ${fmt(yc,3)}</text>`; });
+    g+=`<line class="cur" x1="${X(tc)}" x2="${X(tc)}" y1="${tp}" y2="${H-b}"/>`; svg.innerHTML=g; }
+  $("play").addEventListener("click",()=>{ if(playT){ clearInterval(playT); playT=null; $("play").textContent="▶ Spela"; return; }
+    $("play").textContent="❚❚ Paus"; if(+tsl.value>=+tsl.max) tsl.value=0;
+    playT=setInterval(()=>{ if(+tsl.value>=+tsl.max){ clearInterval(playT); playT=null; $("play").textContent="▶ Spela"; return; }
+      tsl.value=+tsl.value+1; update(); },120); });
+  tsl.addEventListener("input",update);
+  window.addEventListener("resize",()=>{ if(!$("tl").hidden) update(); });
   function update(){
     clip();
     const flow=isFlow(); $("strmrow").hidden=!flow; FL.forEach(o=>o.grp.visible=false);
@@ -506,17 +559,22 @@ else (function(){
     }
     mesh.material=mat;
     const c=D.cases[+sc.value], f=c.fields[+sf.value]; const lo=f.min, hi=f.max>f.min?f.max:f.min+1;
-    paint(geo,f.values,lo,hi);
+    const tr=!!f.frames; $("tl").hidden=!tr; let vals=f.values, ti=0;
+    if (tr){ if(+tsl.max!==f.frames.length-1){ tsl.max=f.frames.length-1; tsl.value=0; } ti=Math.min(+tsl.value,f.frames.length-1);
+      vals=f.frames[ti]; $("tval").textContent="t = "+fmt(f.t[ti],3)+" "+f.t_unit; chart(f,ti); }
+    paint(geo,vals,lo,hi);
     const auto=autoScale(c); ss.disabled=!c.u; const s=c.u? auto*(+ss.value/25) : 0;
     $("scalev").textContent = c.u ? (s>0? "× "+fmt(s,3)+(+ss.value===25?" (auto)":"") : "av") : "ingen förskjutning";
     for(let i=0;i<3*N;i++) pos[i]=P[i]+(c.u? s*c.u[i]:0);
     geo.attributes.position.needsUpdate=true; geo.computeVertexNormals();
     if(!D.mesh.quads){ wire.geometry.dispose(); wire.geometry=wireGeo(); }
-    let im=0; for(let i=1;i<N;i++) if(f.values[i]>f.values[im]) im=i; marker.position.set(pos[3*im],pos[3*im+1],pos[3*im+2]);
+    let im=0; for(let i=1;i<N;i++) if(vals[i]>vals[im]) im=i; marker.position.set(pos[3*im],pos[3*im+1],pos[3*im+2]);
     marker.visible=$("maxm").checked;
     legend(lo,hi,f.unit,f.limit,f.limit_label);
     const util = f.limit? `, utnyttjande <b>${fmt(f.max/f.limit,3)}</b>`:"";
-    $("readout").innerHTML=`max <b>${fmt(f.max,4)} ${f.unit}</b> vid (${f.at.map(x=>fmt(x,4)).join("; ")}) mm, min <b>${fmt(f.min,4)}</b>${util}`;
+    if (tr){ let vmx=-Infinity,vmn=Infinity; for(const v of vals){ if(v>vmx) vmx=v; if(v<vmn) vmn=v; }
+      $("readout").innerHTML=`t = <b>${fmt(f.t[ti],3)} ${f.t_unit}</b>: max <b>${fmt(vmx,4)} ${f.unit}</b> vid (${[pos[3*im],pos[3*im+1],pos[3*im+2]].map(x=>fmt(x,4)).join("; ")}) mm, min <b>${fmt(vmn,4)}</b>`; }
+    else $("readout").innerHTML=`max <b>${fmt(f.max,4)} ${f.unit}</b> vid (${f.at.map(x=>fmt(x,4)).join("; ")}) mm, min <b>${fmt(f.min,4)}</b>${util}`;
   }
   ["clip","clipf","strm"].forEach(id=>$(id).addEventListener("input",update));
   $("clipax").addEventListener("input",()=>{ const ax=$("clipax").value; if(ax!==""){ const bb=new THREE.Box3().setFromBufferAttribute(geo.attributes.position);
