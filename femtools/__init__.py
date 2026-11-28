@@ -9,4 +9,4 @@ from . import openfoam
 from .mesh import setup, refine_and_mesh, to_skfem, mesh_step
 from .materials import material, materials
 from . import projektblad, report, webreport, shell
-__version__ = "1.6.0"
+__version__ = "1.6.1"

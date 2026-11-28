@@ -1,6 +1,6 @@
 # Projektstandard för FEM-beräkningar
 
-Version 5.2, 2026-11-28. Ägare: Marcus Lundh.
+Version 5.3, 2026-11-28. Ägare: Marcus Lundh.
 
 Master: denna fil i GitHub-repot `fem-tools` (`docs/projektstandard.md`). Kopia i Google Drive-mappen "Projektstandard för FEM-beräkningar" synkas efter varje godkänd ändring.
 
@@ -20,6 +20,7 @@ Master: denna fil i GitHub-repot `fem-tools` (`docs/projektstandard.md`). Kopia 
 | 5.0 | 2026-11-27 | Nya regler: betraktarvy framifrån för alla vyer (3D-visare, lastskiss, resultatbilder, CAD-vyer och skisser) med framsidan i projektbladet (`betraktarvy`, krävs av `projektblad.check` från 5.0); interaktiv 3D-visare (`femtools.webreport`) är standardleverans i varje beräkning, med CFD-fält när CFD ingår; CFD kräver nätstudie med minst två nät och sparat nät. femtools 1.4.0: `webreport` med betraktarvy, snittplan och CFD-lager (`flow`, `slice_tets`, `streamlines`), `openfoam.read_case`. |
 | 5.1 | 2026-11-27 | femtools 1.5.0: `shell` (tunnväggiga rotationsskal i CalculiX, S8R, icke-linjär kollaps med NLGEOM och plasticitet, Koiter-imperfektion), `webreport.surface` (skalytor), typvärden för metaller i `material()`. Nya material: AA3104-H19 och AA5182-H48 (burkplåt). CalculiX med MKL Pardiso (`tools/build_ccx_pardiso.sh`). Erfarenheter från knäckning av tunt skal: `*BUCKLE` med S8R ger falska moder, falsens hårnål kräver grovt nät, SPOOLES långsam. Tillägg 2026-11-28: strukturerat nät med S8R och krav på fallande gren för skalkollaps, `orient()` för normalernas riktning, reaktion i alla upplag för olinjära körningar, ingen Richardson när kollapsformen byter plats. |
 | 5.2 | 2026-11-28 | femtools 1.6.0: `heat_transient_coupled` (transient värmeledning med tids- och temperaturberoende konvektion, lokalt linjariserad strålning och en klumpad nod, t.ex. välblandad vätska, kopplad via ränder; energibalans per körning) och `webreport.transient` (tidsreglage med fast färgskala och kurvdiagram). Verifierade mot exakt tvånodslösning och ODE med strålning; se `docs/verifiering.md`. Nya erfarenhetsposter: minnesläcka i pypardiso vid omfaktorisering i tidsloop, tidssteg vid kallstart av tunna väggar, avdunstning från öppen vätskeyta, termiska fall i projektbladet, gmsh i WSL utan sudo. |
+| 5.3 | 2026-11-28 | femtools 1.6.1: `setup(occ_fix=False)` och `mesh_step(occ_fix=False)` stänger av gmsh OCC-reparationen. Meshning: gmsh-volymen jämförs med CAD-volymen direkt efter import, och OCC-reparationen stängs av när den ändrar soliden (svepta kroppar). Nya erfarenhetsposter: OCC-reparation som förstör svepta kroppar, parametrisk CAD för kärl med givet volymkrav, randklassning av koniska väggar. |
 
 ## Användning
 
@@ -128,7 +129,7 @@ Standardinställningar i gmsh (finns i `femtools/mesh.py`, funktionerna `setup` 
 | Trådar | General.NumThreads = 0 | Alla kärnor. |
 | Storlek från krökning | 24 element per 2π | Hål och radier löses upp automatiskt. |
 | Lokal förfining | Distance + Threshold på kritiska ytor | Fint där spänningen utvärderas, grovt annars. |
-| Geometrireparation | OCCFixDegenerated, OCCFixSmallEdges, OCCFixSmallFaces | Färre meshfel från STEP. |
+| Geometrireparation | OCCFixDegenerated, OCCFixSmallEdges, OCCFixSmallFaces (`setup(occ_fix=True)`) | Färre meshfel från STEP. Stängs av med `occ_fix=False` om gmsh-volymen efter import avviker från CAD-volymen, t.ex. för svepta kroppar. |
 | Elementtyp | P1-nät från gmsh, P2-basis i scikit-fem | Kvadratiskt fält. Raka kanter, därför lokal förfining vid krökta kritiska ytor. |
 
 Riktvärden för elementstorlek:
@@ -148,6 +149,7 @@ STEP från CAD:
 
 - Kontrollera enheten med nätets bounding box mot ritningen innan nätning. Fusion 360 skriver alltid STEP i cm, även när dokumentet är i mm. Konvertera med OCCT (`STEPCAFControl_Writer`, `write.step.unit MM`) eller sätt `Geometry.OCCTargetUnit = "MM"` vid import.
 - gmsh läser inte kroppsnamnen i STEP. Identifiera solider via ordning och volym och redovisa volymen mot CAD.
+- Jämför gmsh-volymen direkt efter import med CAD-volymen (cadquery eller CAD-programmet) inom 0,05 %, före `occ.fragment` och nätning. Avviker den: importera om med `setup(occ_fix=False)`.
 - Ger gmsh "Impossible to mesh periodic surface" (sömmar på cylindrar som korsas av radier): dela soliden i CAD i kvartar eller halvor genom symmetriplanen, exportera och slå ihop med `occ.fragment`, som ger ett konformt nät över snittytorna.
 
 Förenkling av geometri (defeaturing):
@@ -286,6 +288,9 @@ Lärdomar från genomförda beräkningar. Varje post: datum, projekt, lärdom, �
 | 2026-11-28 | Transient termik (öppen vätskeyta) | Avdunstning stod för cirka 60 % av värmeförlusten från en kopp med 85 °C vatten, och korrelationen för plan fri yta gäller inte säkert för en yta som ligger nedsänkt i kärlet (känslighet ×0,5 gav +6,7 K efter 30 min). | Avdunstning beräknas med värme–massanalogi (Chilton–Colburn) och redovisas alltid med känslighetsstudie eller mätning (vägning) som kalibrering. |
 | 2026-11-28 | Allmänt | Projektbladets krav (SF_y, lastfall med riktning, låsta DOF) är skrivna för hållfasthet; ett termiskt fall måste fylla dem med "ej tillämpligt" och termiska indata (starttemperatur, omgivning, luftfuktighet, underlag) saknar egna fält. | Förslag till nästa huvudversion: `analystyp` i projektbladet med egna krav för termik. |
 | 2026-11-28 | Allmänt | WSL utan sudo: gmsh kräver libGLU. `apt-get download` + `dpkg -x` till en egen katalog och `LD_LIBRARY_PATH` fungerar; venv kan skapas med `--without-pip` och pip startas från ett wheel. | Står i `CLAUDE.md` under Uppstart. |
+| 2026-11-28 | Transient termik (kopp med svept öra) | gmsh OCC-reparationen (OCCFixSmallFaces/-Edges) ändrade en Fusion-solid med ett svept öra och fillets: volymen sjönk från 73,83 till 73,16 cm³, och `occ.fragment` med en låda gav överlappande delar och ingen keramik. Utan reparationen var volymen exakt och nätet felfritt (γ_min 0,14–0,24, volym inom 0,4 %). | femtools 1.6.1 `setup(occ_fix=False)`; volymkontroll mot CAD direkt efter import (Meshning, STEP från CAD). |
+| 2026-11-28 | Kärl med givet volymkrav | Ett kärl som ska rymma en given volym ritades parametriskt i Fusion 360 (revolve, shell, fillets, sweep), och kantdiametern justerades med sekantmetod mot kavitetens volym, beräknad med `TemporaryBRepManager` (kon genom väggens mitt minus kärlet). 3,00 dl nåddes på fyra iterationer, och cadquery gav samma volym (300,02 cm³) på exporterad STEP. | Volymkrav löses i CAD med parametrar och kontrolleras oberoende på STEP före nätning. |
+| 2026-11-28 | Transient termik (konisk kopp) | Randklassning med fasta radier (r < 37 mm) fungerar inte för koniska väggar. Klassning mot väggens mittyta r_mid(z), beräknad ur projektbladets geometriparametrar, gav entydiga ränder (varje facett i exakt en grupp). | Randklassning av rotationskroppar görs mot geometrifunktioner ur projektbladets parametrar, inte mot fasta tal. |
 
 ## Revisionsprocess
 

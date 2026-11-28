@@ -16,16 +16,19 @@ import numpy as np
 import gmsh
 
 
-def setup(threads=0):
+def setup(threads=0, occ_fix=True):
+    """occ_fix=False stänger av OCC-reparationen. Krävs för svepta kroppar (t.ex. ett öra svept längs en bana
+    med fillets) där OCCFixSmallFaces/-Edges ändrar soliden: volymen sjönk 0,9 % och occ.fragment gav fel delar."""
     gmsh.initialize()
     gmsh.option.setNumber("General.Terminal", 0)
     gmsh.option.setNumber("General.NumThreads", threads)      # 0 = alla kärnor
     gmsh.option.setNumber("Mesh.Algorithm", 6)                # Frontal-Delaunay 2D
     gmsh.option.setNumber("Mesh.Algorithm3D", 10)             # HXT (parallell)
     gmsh.option.setNumber("Mesh.Optimize", 1)
-    gmsh.option.setNumber("Geometry.OCCFixDegenerated", 1)
-    gmsh.option.setNumber("Geometry.OCCFixSmallEdges", 1)
-    gmsh.option.setNumber("Geometry.OCCFixSmallFaces", 1)
+    fix = 1 if occ_fix else 0
+    gmsh.option.setNumber("Geometry.OCCFixDegenerated", fix)
+    gmsh.option.setNumber("Geometry.OCCFixSmallEdges", fix)
+    gmsh.option.setNumber("Geometry.OCCFixSmallFaces", fix)
 
 
 def refine_and_mesh(h_glob, h_loc=None, refine_surfs=(), dist_min=None, dist_max=None,
@@ -69,9 +72,9 @@ def to_skfem():
     return MeshTet(xyz[used].T, remap[t])
 
 
-def mesh_step(path, h_glob, h_loc=None, refine_surfs=(), threads=0):
+def mesh_step(path, h_glob, h_loc=None, refine_surfs=(), threads=0, occ_fix=True):
     """Läs STEP, kontrollera enheter via bounding box, meshar. Returnerar skfem-nät."""
-    setup(threads)
+    setup(threads, occ_fix)
     gmsh.model.occ.importShapes(path)
     gmsh.model.occ.synchronize()
     bb = gmsh.model.getBoundingBox(-1, -1)
