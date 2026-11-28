@@ -392,7 +392,7 @@ tr:last-child td{border-bottom:0}
     <div class="tl" id="tl" hidden>
       <div class="row"><button type="button" id="play">▶ Spela</button>
         <input type="range" id="tsl" min="0" max="0" value="0" aria-label="Tid"><span class="scaleval" id="tval"></span></div>
-      <svg id="chart" viewBox="0 0 900 240" role="img" aria-label="Kurvor över tiden"></svg>
+      <svg id="chart" viewBox="0 0 900 250" role="img" aria-label="Kurvor över tiden"></svg>
     </div>
   </div>
   <div id="blocks" class="wrap" style="gap:28px;margin:0;justify-items:start"></div>
@@ -521,13 +521,13 @@ else (function(){
   const tsl=$("tsl"); let playT=null;
   const PAL=["--accent","--warn","--ink","--muted"];
   function chart(f,ti){ const svg=$("chart"); if(!f.curves||!f.curves.length){ svg.innerHTML=""; svg.style.display="none"; return; }
-    svg.style.display=""; const W=900,H=240,l=58,r=150,tp=16,b=34; let t0=Infinity,t1=-Infinity,y0=Infinity,y1=-Infinity;
+    svg.style.display=""; const W=900,H=250,l=58,r=150,tp=30,b=34; let t0=Infinity,t1=-Infinity,y0=Infinity,y1=-Infinity;
     f.curves.forEach(c=>{c.t.forEach(v=>{t0=Math.min(t0,v);t1=Math.max(t1,v);}); c.y.forEach(v=>{y0=Math.min(y0,v);y1=Math.max(y1,v);});});
     const pad=(y1-y0)*0.05||1; y0-=pad; y1+=pad; const X=v=>l+(W-l-r)*(v-t0)/((t1-t0)||1), Y=v=>H-b-(H-tp-b)*(v-y0)/((y1-y0)||1);
     let g=""; for(let k=0;k<=5;k++){ const yv=y0+(y1-y0)*k/5, tv=t0+(t1-t0)*k/5;
       g+=`<line class="ax" x1="${l}" x2="${W-r}" y1="${Y(yv)}" y2="${Y(yv)}"/><text class="lab" x="${l-6}" y="${Y(yv)+4}" text-anchor="end">${fmt(yv,3)}</text>`;
       g+=`<text class="lab" x="${X(tv)}" y="${H-b+16}" text-anchor="middle">${fmt(tv,3)}</text>`; }
-    g+=`<text class="lab" x="${(l+W-r)/2}" y="${H-4}" text-anchor="middle">tid [${f.t_unit}]</text><text class="lab" x="4" y="${tp-4}">${f.curve_title?f.curve_title+" ":""}[${f.curve_unit}]</text>`;
+    g+=`<text class="lab" x="${(l+W-r)/2}" y="${H-4}" text-anchor="middle">tid [${f.t_unit}]</text><text class="lab" x="4" y="${tp-14}">${f.curve_title?f.curve_title+" ":""}[${f.curve_unit}]</text>`;
     const tc=f.t[ti];
     f.curves.forEach((c,i)=>{ const col=css(PAL[i%PAL.length]); let d=""; c.t.forEach((v,j)=>{ d+=(j?"L":"M")+X(v).toFixed(1)+","+Y(c.y[j]).toFixed(1); });
       let j=0; while(j<c.t.length-1 && c.t[j]<tc) j++; const yc=c.y[j];
