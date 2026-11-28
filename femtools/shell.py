@@ -125,7 +125,51 @@ def revolve_shell(chains, h, h_func=None, quad=True, structured=False, zones=Non
     remap = -np.ones(len(nodes), int); remap[used] = np.arange(len(used))
     nodes = nodes[used]
     elems = {k: remap[v] for k, v in elems.items()}
-    return nodes, elems, dict(chain=chain, time=time.perf_counter() - t0)
+    elems, nflip = orient(elems)
+    return nodes, elems, dict(chain=chain, time=time.perf_counter() - t0, flipped=nflip)
+
+
+_REV = {"S8R": [0, 3, 2, 1, 7, 6, 5, 4], "S6": [0, 2, 1, 5, 4, 3]}
+
+
+def orient(elems):
+    """Gör elementens normaler konsistenta över hela ytan (även över kedjegränser och halvvarvsfogar).
+
+    Grannar som delar en kant ska genomlöpa den i motsatt riktning; annars vänds grannen. Motriktade normaler vid
+    tangentkontinuerliga fogar ger CalculiX-felet "gen3dnor: size of estimated shell normal ... smaller than 1.e-10"
+    och felaktiga medelnormaler. Returnerar (elems, antal vända element). Kräver orienterbar yta.
+    """
+    from collections import deque
+    keys = [k for k in ("S8R", "S6") if len(elems.get(k, []))]
+    conn = [(k, i, elems[k][i, :4 if k == "S8R" else 3]) for k in keys for i in range(len(elems[k]))]
+    edges = {}
+    for j, (_, _, c) in enumerate(conn):
+        for a in range(len(c)):
+            u, v = int(c[a]), int(c[(a + 1) % len(c)])
+            edges.setdefault((min(u, v), max(u, v)), []).append((j, u < v))
+    flip = np.zeros(len(conn), bool); seen = np.zeros(len(conn), bool)
+    nb = [[] for _ in conn]
+    for lst in edges.values():
+        if len(lst) == 2:
+            (a, da), (b, db) = lst
+            nb[a].append((b, da == db)); nb[b].append((a, da == db))
+    for s0 in range(len(conn)):
+        if seen[s0]:
+            continue
+        seen[s0] = True; q = deque([s0])
+        while q:
+            a = q.popleft()
+            for b, same in nb[a]:
+                want = flip[a] ^ same          # samma riktning på kanten => motsatt orientering
+                if not seen[b]:
+                    seen[b] = True; flip[b] = want; q.append(b)
+                elif flip[b] != want:
+                    raise RuntimeError("Ytan är inte orienterbar (eller nätet har en felaktig kant)")
+    out = {k: v.copy() for k, v in elems.items()}
+    for j, (k, i, _) in enumerate(conn):
+        if flip[j]:
+            out[k][i] = elems[k][i, _REV[k]]
+    return out, int(flip.sum())
 
 
 def ring_nodes(nodes, r, z, tol=1e-3):
@@ -144,7 +188,7 @@ def _fmt_ids(ids, per=16):
     return "\n".join(",".join(ids[i:i + per]) for i in range(0, len(ids), per))
 
 
-def write_inp(path, nodes, elems, thickness, materials, mat_of, nsets, steps, round_t=4):
+def write_inp(path, nodes, elems, thickness, materials, mat_of, nsets, steps, round_t=4, quad_type="S8R"):
     """Skriver CalculiX-indata.
 
     thickness: {"S8R": (m,), "S6": (k,)} tjocklek per element [mm]; grupperas per avrundat värde.
@@ -152,6 +196,10 @@ def write_inp(path, nodes, elems, thickness, materials, mat_of, nsets, steps, ro
     mat_of: {"S8R": array av materialnamn per element, ...}
     nsets: {namn: 0-baserade nodindex}
     steps: text för *STEP-blocken (se buckle_step, collapse_step).
+    quad_type: "S8R" (standard) eller "S8". Använd S8R på strukturerat nät (revolve_shell(structured=True)):
+        S8R på ostrukturerat, lokalt förfinat nät gav falska kollapsmoder (vågantal följde nätet, ingen fallande gren,
+        lasten sjönk med förfining). S8 (full integration) låser: cylinderkollaps +14 % vid h = l/3, +4 % vid h = l/6.
+        Nyckeln i elems heter "S8R" oavsett typ.
     """
     L = ["*HEADING", "femtools.shell", "*NODE"]
     L += [f"{i + 1},{x:.6f},{y:.6f},{z:.6f}" for i, (x, y, z) in enumerate(nodes)]
@@ -159,7 +207,7 @@ def write_inp(path, nodes, elems, thickness, materials, mat_of, nsets, steps, ro
     for typ, conn in elems.items():
         if len(conn) == 0:
             continue
-        L.append(f"*ELEMENT,TYPE={typ},ELSET=E{typ}")
+        L.append(f"*ELEMENT,TYPE={quad_type if typ == 'S8R' else typ},ELSET=E{typ}")
         for k, c in enumerate(conn):
             L.append(f"{eid}," + ",".join(str(i + 1) for i in c))
             key = (round(float(thickness[typ][k]), round_t), mat_of[typ][k])
