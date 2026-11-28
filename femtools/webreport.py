@@ -314,8 +314,9 @@ h1{font:600 clamp(26px,4vw,38px)/1.1 var(--display);margin:0;text-wrap:balance}
 .sub{color:var(--muted);margin:0;max-width:65ch}
 dl.meta{display:flex;flex-wrap:wrap;gap:6px 22px;margin:4px 0 0;font:13px/1.4 var(--mono)}
 dl.meta div{display:flex;gap:6px} dl.meta dt{color:var(--muted)} dl.meta dd{margin:0}
-.viewer{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:0;background:var(--paper);border:1px solid var(--rule)}
-@media (max-width:820px){.viewer{grid-template-columns:minmax(0,1fr)}}
+.viewer{display:grid;grid-template-columns:minmax(0,1fr) 260px;grid-template-areas:"stage ctl" "tl ctl";gap:0;background:var(--paper);border:1px solid var(--rule)}
+@media (max-width:820px){.viewer{grid-template-columns:minmax(0,1fr);grid-template-areas:"stage" "tl" "ctl"}}
+.stage{grid-area:stage} .controls{grid-area:ctl} .tl{grid-area:tl}
 .stage{position:relative;min-width:0;aspect-ratio:16/10;max-width:100%;background:var(--canvas)}
 .stage canvas{display:block;width:100%;height:100%;touch-action:none}
 .legend{position:absolute;right:12px;top:34px;bottom:12px;display:flex;gap:8px;align-items:stretch;pointer-events:none;
@@ -328,7 +329,7 @@ dl.meta div{display:flex;gap:6px} dl.meta dt{color:var(--muted)} dl.meta dd{marg
 .legend .unit{position:absolute;top:-14px;left:-22px;transform:translateY(-100%);color:var(--muted);white-space:nowrap}
 .readout{position:absolute;left:12px;bottom:12px;font:12px/1.4 var(--mono);color:var(--muted);pointer-events:none;max-width:60%}
 .readout b{color:var(--ink);font-weight:500}
-.controls{border-left:1px solid var(--rule);padding:16px;display:grid;gap:14px;align-content:start;min-width:0}
+.controls{border-left:1px solid var(--rule);padding:16px;display:grid;gap:14px;align-content:start;min-width:0;align-self:stretch}
 @media (max-width:820px){.controls{border-left:0;border-top:1px solid var(--rule);grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}}
 .controls label{display:grid;gap:5px;font:500 12px/1.2 var(--body);letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
 select,input[type=range]{width:100%;font:14px var(--body);color:var(--ink)}
@@ -354,8 +355,8 @@ tr:last-child td{border-bottom:0}
 @media print{.controls,.caption button{display:none}.viewer{grid-template-columns:1fr}body{background:#fff}}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
 [hidden]{display:none!important}
-.tl{grid-column:1/-1;border-top:1px solid var(--rule);padding:12px 16px;display:grid;gap:8px}
-.tl .row{align-items:center} .tl input[type=range]{flex:1;min-width:160px}
+.tl{border-top:1px solid var(--rule);padding:12px 16px;display:grid;gap:8px;min-width:0;align-self:start}
+.tl .row{align-items:center;flex-wrap:nowrap} .tl input[type=range]{flex:1;min-width:80px} .tl .scaleval{white-space:nowrap}
 .tl svg{width:100%;height:auto;display:block;font:12px var(--mono)}
 .tl .ax{stroke:var(--rule)} .tl .lab{fill:var(--muted)} .tl .cur{stroke:var(--warn);stroke-width:1.5}
 </style>
@@ -521,7 +522,8 @@ else (function(){
   const tsl=$("tsl"); let playT=null;
   const PAL=["--accent","--warn","--ink","--muted"];
   function chart(f,ti){ const svg=$("chart"); if(!f.curves||!f.curves.length){ svg.innerHTML=""; svg.style.display="none"; return; }
-    svg.style.display=""; const W=900,H=250,l=58,r=150,tp=30,b=34; let t0=Infinity,t1=-Infinity,y0=Infinity,y1=-Infinity;
+    svg.style.display=""; const nar=(svg.clientWidth||900)<600, W=nar?Math.max(300,svg.clientWidth):900, H=nar?230:250, l=nar?40:58, r=nar?12:150, tp=nar?48:30, b=34;
+    svg.setAttribute("viewBox",`0 0 ${W} ${H}`); let t0=Infinity,t1=-Infinity,y0=Infinity,y1=-Infinity;
     f.curves.forEach(c=>{c.t.forEach(v=>{t0=Math.min(t0,v);t1=Math.max(t1,v);}); c.y.forEach(v=>{y0=Math.min(y0,v);y1=Math.max(y1,v);});});
     const pad=(y1-y0)*0.05||1; y0-=pad; y1+=pad; const X=v=>l+(W-l-r)*(v-t0)/((t1-t0)||1), Y=v=>H-b-(H-tp-b)*(v-y0)/((y1-y0)||1);
     let g=""; for(let k=0;k<=5;k++){ const yv=y0+(y1-y0)*k/5, tv=t0+(t1-t0)*k/5;
@@ -532,13 +534,15 @@ else (function(){
     f.curves.forEach((c,i)=>{ const col=css(PAL[i%PAL.length]); let d=""; c.t.forEach((v,j)=>{ d+=(j?"L":"M")+X(v).toFixed(1)+","+Y(c.y[j]).toFixed(1); });
       let j=0; while(j<c.t.length-1 && c.t[j]<tc) j++; const yc=c.y[j];
       g+=`<path d="${d}" fill="none" stroke="${col}" stroke-width="2"/><circle cx="${X(c.t[j])}" cy="${Y(yc)}" r="4" fill="${col}"/>`;
-      g+=`<text x="${W-r+8}" y="${tp+14+18*i}" fill="${col}">${c.name}: ${fmt(yc,3)}</text>`; });
+      g+= nar? `<text x="${4+i*Math.floor((W-8)/f.curves.length)}" y="14" fill="${col}">${c.name}: ${fmt(yc,3)}</text>`
+             : `<text x="${W-r+8}" y="${tp+14+18*i}" fill="${col}">${c.name}: ${fmt(yc,3)}</text>`; });
     g+=`<line class="cur" x1="${X(tc)}" x2="${X(tc)}" y1="${tp}" y2="${H-b}"/>`; svg.innerHTML=g; }
   $("play").addEventListener("click",()=>{ if(playT){ clearInterval(playT); playT=null; $("play").textContent="▶ Spela"; return; }
     $("play").textContent="❚❚ Paus"; if(+tsl.value>=+tsl.max) tsl.value=0;
     playT=setInterval(()=>{ if(+tsl.value>=+tsl.max){ clearInterval(playT); playT=null; $("play").textContent="▶ Spela"; return; }
       tsl.value=+tsl.value+1; update(); },120); });
   tsl.addEventListener("input",update);
+  window.addEventListener("resize",()=>{ if(!$("tl").hidden) update(); });
   function update(){
     clip();
     const flow=isFlow(); $("strmrow").hidden=!flow; FL.forEach(o=>o.grp.visible=false);
