@@ -17,6 +17,7 @@ apt-get install -y -qq calculix-ccx && bash tools/build_ccx_pardiso.sh          
 pip install -q -e .            # i repot; annars: pip install git+https://github.com/marcuslundh-gif/fem-tools
 python -m femtools.verify      # måste sluta med "femtools verifierad OK"
 ```
+Utan sudo (t.ex. WSL på smartfish): `apt-get download libglu1-mesa libxcursor1 libxinerama1 libxft2 libxrender1 libxfixes3 libopengl0 libgl1 libglx0 libglvnd0`, packa upp med `dpkg -x <deb> ~/opt/root` och sätt `LD_LIBRARY_PATH=~/opt/root/usr/lib/x86_64-linux-gnu` i varje körning. Saknas pip: `python3 -m venv --without-pip ~/venv-fem` och starta pip från ett pip-wheel (`python pip-*.whl/pip install pip`). Långa jobb i WSL körs som ett eget `wsl -e bash -lc` i bakgrunden; `nohup ... &` dör när wsl-anropet avslutas.
 
 ## Beräkningsfall
 - Fallmapp utanför repot: `~/fem-cases/<YYMMDD_case>/` med `inputs.json` (kopia av `mallar/projektblad.json`), `src/` (skript och `<case>_handcalc.py`), `results/`, `fig/`, `report.md`.

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "femtools"
-version = "1.3.0"
+version = "1.6.0"
 description = "Verifierade FEM-mallar: gmsh-meshning + scikit-fem (P2) statik/modal, mm-N-MPa"
 requires-python = ">=3.9"
 dependencies = ["numpy", "scipy", "scikit-fem>=10", "gmsh", "meshio", "matplotlib", "threadpoolctl", "pypardiso; platform_machine=='x86_64' or platform_machine=='AMD64'"]

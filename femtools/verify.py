@@ -5,7 +5,7 @@ from skfem import MeshTet
 import gmsh
 from .core import static, modal
 from .loads import static_ext
-from .thermal import heat, heat_transient
+from .thermal import heat, heat_transient, heat_transient_coupled, SIGMA
 from .buckling import buckling
 from .cfd import flow, boundary_flow
 from . import openfoam
@@ -174,6 +174,41 @@ def thermal_test():
     assert abs(Tc - Tc_h) < 0.2
 
 
+def thermal_coupled_test():
+    """heat_transient_coupled: klumpad nod + konvektion (2 noder, exakt med expm) och strålning +
+    temperaturberoende konvektion (ODE med solve_ivp). Kuben har mycket hög k, så den är isoterm."""
+    from scipy.linalg import expm
+    from scipy.integrate import solve_ivp
+    t0 = time.perf_counter()
+    a = 10.0
+    mc = MeshTet.init_tensor(*[np.linspace(0, a, 4)] * 3)
+    mc = mc.with_boundaries({"x0": lambda x: np.isclose(x[0], 0), "x1": lambda x: np.isclose(x[0], a),
+                             "alla": lambda x: np.isclose(x[0], 0) | np.isclose(x[0], a) | np.isclose(x[1], 0)
+                             | np.isclose(x[1], a) | np.isclose(x[2], 0) | np.isclose(x[2], a)})
+    rho, c, A = 2.4e-9, 830e6, a * a
+    Cs, CL, hc, h0, G = rho * c * a**3, 4000.0, 0.2, 0.01, 2.0
+    r = heat_transient_coupled(mc, 1e5, rho, c, 20.0, 2000.0, 2000, save=2,
+                               conv={"x0": [(hc, "L")], "x1": [(h0, 0.0)]},
+                               lumped=dict(C=CL, T0=80.0, loss=lambda TL, t: (G * TL, G)))
+    Amat = np.array([[-(hc * A + h0 * A) / Cs, hc * A / Cs], [hc * A / CL, -(hc * A + G) / CL]])
+    xs, xl = expm(Amat * 2000.0) @ np.array([20.0, 80.0])
+    Ts = r["T"][-1].mean()
+    # strålning (eps 0,9) + konvektion h = 1e-3·(Ts − 20)^0,25 från 300 °C mot 20 °C
+    rho2, c2, eps = 1e-9, 1e8, 0.9
+    C2, A2 = rho2 * c2 * a**3, 6 * a * a
+    hfun = lambda Ts: 1e-3 * max(Ts - 20.0, 0.0) ** 0.25
+    r2 = heat_transient_coupled(mc, 1e5, rho2, c2, 300.0, 30.0, 300, save=2,
+                                conv={"alla": lambda s: [(hfun(s["Ts"]), 20.0)]}, rad={"alla": (eps, 20.0)})
+    ode = lambda t, T: [-A2 / C2 * (hfun(T[0]) * (T[0] - 20) + eps * SIGMA * ((T[0] + 273.15)**4 - 293.15**4))]
+    Tref2 = solve_ivp(ode, (0, 30.0), [300.0], rtol=1e-10, atol=1e-10).y[0, -1]
+    T2 = r2["T"][-1].mean()
+    print(f"Termik kopplad: kropp {Ts:.3f}/{xs:.3f} °C, nod {r['TL'][-1]:.3f}/{xl:.3f} °C, balans {r['balance']:.1e}; "
+          f"strålning+konv {T2:.3f}/{Tref2:.3f} °C, balans {r2['balance']:.1e}, {r2['refactor']} faktoriseringar, "
+          f"{time.perf_counter() - t0:.1f} s")
+    assert abs(Ts - xs) < 0.05 and abs(r["TL"][-1] - xl) < 0.05 and r["balance"] < 1e-8
+    assert abs(T2 - Tref2) < 0.3 and r2["balance"] < 1e-3
+
+
 def buckling_test():
     """buckling: Euler-pelare 500×10×10 mm, fall 1 (inspänd-fri) och fall 3 (inspänd-ledad)."""
     E, nu, L, a = 210e3, 0.3, 500.0, 10.0
@@ -262,6 +297,9 @@ def webreport_test():
     out = (np.einsum("ij,ij->i", nrm, p[t].mean(1) - [1, 0.5, 0.5]) > 0).mean()
     vals = m.p[0] * 10
     w.field("LF1", "x", vals, "MPa", u=np.vstack([m.p[0] * 0.01, 0 * m.p[0], 0 * m.p[0]]), limit=15)
+    tt = np.array([0.0, 60.0, 120.0])
+    w.transient("Transient", "T", tt, [vals * (1 - 0.25 * k) for k in range(3)], "°C",
+                curves={"medel": (tt, [vals.mean() * (1 - 0.25 * k) for k in range(3)])})
     w.table("T", ["a", "b"], [["x", 1.5]])
     w.text("Text", "Stycke 1\n\nStycke 2")
     with tempfile.TemporaryDirectory() as td:
@@ -271,6 +309,9 @@ def webreport_test():
     print(f"Webbrapport: {len(t)} yttrianglar, {out:.0%} utåt, max {f['max']:.1f} vid {f['at']}, {len(html) // 1024} kB")
     assert out == 1.0 and abs(f["max"] - 20) < 1e-9 and f["at"][0] == 2.0
     assert "<title>Test</title>" in html and "three@0.128.0" in html and json.dumps(d["title"]) in html
+    ft = d["cases"][1]["fields"][0]
+    assert len(ft["frames"]) == 3 and abs(ft["max"] - 20) < 1e-9 and abs(min(ft["frames"][2]) - 0) < 1e-9
+    assert ft["t"] == [0.0, 1.0, 2.0] and abs(ft["curves"][0]["y"][2] - vals.mean() * 0.5) < 1e-3 and 'id="tsl"' in html
 
 
 def webreport_flow_test():
@@ -357,6 +398,7 @@ if __name__ == "__main__":
     plate_hole()
     loads_test()
     thermal_test()
+    thermal_coupled_test()
     buckling_test()
     cfd_test()
     openfoam_test()

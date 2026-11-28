@@ -1,6 +1,6 @@
 # Projektstandard för FEM-beräkningar
 
-Version 5.1, 2026-11-27. Ägare: Marcus Lundh.
+Version 5.2, 2026-11-28. Ägare: Marcus Lundh.
 
 Master: denna fil i GitHub-repot `fem-tools` (`docs/projektstandard.md`). Kopia i Google Drive-mappen "Projektstandard för FEM-beräkningar" synkas efter varje godkänd ändring.
 
@@ -19,6 +19,7 @@ Master: denna fil i GitHub-repot `fem-tools` (`docs/projektstandard.md`). Kopia 
 | 4.3 | 2026-11-26 | Erfarenheter från ett fall med STEP från Fusion 360, termik, superponerade lastfall och CFD i OpenFOAM: STEP-enhet, gmsh-fel på periodiska ytor, STEP → OpenFOAM-nät, efterbehandling utan surfaceFieldValue, minnestak och konvergens med liten nätkvot, AMG-prestanda. 1.4301 rör med temperaturberoende Rp0,2, λ och c_p i `materials.json`. Bygger på 4.2 (PR #3). |
 | 5.0 | 2026-11-27 | Nya regler: betraktarvy framifrån för alla vyer (3D-visare, lastskiss, resultatbilder, CAD-vyer och skisser) med framsidan i projektbladet (`betraktarvy`, krävs av `projektblad.check` från 5.0); interaktiv 3D-visare (`femtools.webreport`) är standardleverans i varje beräkning, med CFD-fält när CFD ingår; CFD kräver nätstudie med minst två nät och sparat nät. femtools 1.4.0: `webreport` med betraktarvy, snittplan och CFD-lager (`flow`, `slice_tets`, `streamlines`), `openfoam.read_case`. |
 | 5.1 | 2026-11-27 | femtools 1.5.0: `shell` (tunnväggiga rotationsskal i CalculiX, S8R, icke-linjär kollaps med NLGEOM och plasticitet, Koiter-imperfektion), `webreport.surface` (skalytor), typvärden för metaller i `material()`. Nya material: AA3104-H19 och AA5182-H48 (burkplåt). CalculiX med MKL Pardiso (`tools/build_ccx_pardiso.sh`). Erfarenheter från knäckning av tunt skal: `*BUCKLE` med S8R ger falska moder, falsens hårnål kräver grovt nät, SPOOLES långsam. Tillägg 2026-11-28: strukturerat nät med S8R och krav på fallande gren för skalkollaps, `orient()` för normalernas riktning, reaktion i alla upplag för olinjära körningar, ingen Richardson när kollapsformen byter plats. |
+| 5.2 | 2026-11-28 | femtools 1.6.0: `heat_transient_coupled` (transient värmeledning med tids- och temperaturberoende konvektion, lokalt linjariserad strålning och en klumpad nod, t.ex. välblandad vätska, kopplad via ränder; energibalans per körning) och `webreport.transient` (tidsreglage med fast färgskala och kurvdiagram). Verifierade mot exakt tvånodslösning och ODE med strålning; se `docs/verifiering.md`. Nya erfarenhetsposter: minnesläcka i pypardiso vid omfaktorisering i tidsloop, tidssteg vid kallstart av tunna väggar, avdunstning från öppen vätskeyta, termiska fall i projektbladet, gmsh i WSL utan sudo. |
 
 ## Användning
 
@@ -280,6 +281,11 @@ Lärdomar från genomförda beräkningar. Varje post: datum, projekt, lärdom, �
 | 2026-11-27 | Tunnväggigt rotationsskal | CalculiX frd innehöll bara expanderade 3D-noder för skal. | `*NODE FILE, OUTPUT=2D` ger mittytans noder; `femtools.shell.collapse_step` gör det. |
 | 2026-11-27 | Allmänt | CalculiX från apt (SPOOLES) tog 2,3 gånger längre tid än samma version byggd med MKL Pardiso. | `tools/build_ccx_pardiso.sh` och `ccx_exe()` (Lösare och prestanda). |
 | 2026-11-27 | Allmänt | `material()` hanterade inte typvärden för metaller med tjockleksintervall. | femtools 1.5.0: tjockleksuppslag även för TYPVARDE-metaller. |
+| 2026-11-28 | Transient termik (vätska i keramikkärl) | pypardiso: ny `PyPardisoSolver()` vid varje omfaktorisering i en tidsloop läckte MKL-minne tills processen dödades (rc 137) vid 245 000 DOF. | `heat_transient_coupled` återanvänder lösaren och anropar `free_memory(everything=True)` före omfaktorisering. Samma mönster i nya tidsloopar. |
+| 2026-11-28 | Transient termik (tunn keramikvägg) | Kallstart av en 3 mm vägg har tidsskalan t²/a ≈ 12 s. Implicit Euler med dt 0,5 s de första 120 s och 5 s därefter gav samma resultat som dubbla tidssteg inom 0,05 K. | Dela upp tidsaxeln i segment (fint i början) och redovisa en tidsstegsstudie bredvid nätstudien. |
+| 2026-11-28 | Transient termik (öppen vätskeyta) | Avdunstning stod för cirka 60 % av värmeförlusten från en kopp med 85 °C vatten, och korrelationen för plan fri yta gäller inte säkert för en yta som ligger nedsänkt i kärlet (känslighet ×0,5 gav +6,7 K efter 30 min). | Avdunstning beräknas med värme–massanalogi (Chilton–Colburn) och redovisas alltid med känslighetsstudie eller mätning (vägning) som kalibrering. |
+| 2026-11-28 | Allmänt | Projektbladets krav (SF_y, lastfall med riktning, låsta DOF) är skrivna för hållfasthet; ett termiskt fall måste fylla dem med "ej tillämpligt" och termiska indata (starttemperatur, omgivning, luftfuktighet, underlag) saknar egna fält. | Förslag till nästa huvudversion: `analystyp` i projektbladet med egna krav för termik. |
+| 2026-11-28 | Allmänt | WSL utan sudo: gmsh kräver libGLU. `apt-get download` + `dpkg -x` till en egen katalog och `LD_LIBRARY_PATH` fungerar; venv kan skapas med `--without-pip` och pip startas från ett wheel. | Står i `CLAUDE.md` under Uppstart. |
 
 ## Revisionsprocess
 
